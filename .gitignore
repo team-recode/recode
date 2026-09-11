@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+repos/
+cache/
+.DS_Store
+.idea/
+.vscode/
