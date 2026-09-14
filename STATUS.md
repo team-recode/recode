@@ -177,8 +177,8 @@ psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
 
 **부수 작업**:
 - 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
-- `run_validation.py` / `true_positive_test.py` 의 `DEFAULT_MODEL = "gemini-3.6-flash"` 는 이제 존재하지 않는 모델. PHASE 3 착수 전에 상수 갱신 검토 (`gemini-3-flash-preview` 등)
-- 커밋 `e5bee20` 후 남은 venv 드리프트(`anthropic`·`openai` uninstall) — `judge/` 시작 전에 CLAUDE.md 지침대로 정리
+- ✅ `DEFAULT_MODEL` 갱신 완료 (9/14 저녁): `gemini-3.6-flash` → `gemini-3-flash-preview`. mhctools 리콜 6/6 통과 모델로 확정
+- ⏳ **Venv 드리프트 정리는 다음 세션으로 연기.** CLAUDE.md 지침대로 `pip uninstall anthropic openai -y` 필요하나, PHASE 3 착수 세션 시작 시 함께 처리. `sentence-transformers` 스택은 PHASE 5 시작 시 설치. 지금 `requirements.txt` 재생성은 부작용(sentence-transformers 항목 소실) 있어 보류
 
 > `analyzer/`(③④⑥) + `judge/`(①②) 가 이제 함께 살아있는 상태. PHASE 3~7 순서대로 진행.
 

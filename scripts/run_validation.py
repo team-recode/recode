@@ -26,8 +26,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = REPO_ROOT / ".env"
 CACHE_PATH = REPO_ROOT / "cache" / "검증응답캐시.json"
 
-# gemini-2.5-flash 는 신규 사용자에게 404. 3.6-flash 이상을 쓴다.
-DEFAULT_MODEL = "gemini-3.6-flash"
+# gemini-3.6-flash 는 9/14 목록에서 사라짐(신규 사용자 접근 제거 추정).
+# 2차 사이클(mhctools)에서 CASES 6/6 을 실제로 통과시킨 모델로 갱신.
+# quota 소진 시 CLI 3번째 인자로 다른 모델(gemini-flash-latest 등) 지정.
+DEFAULT_MODEL = "gemini-3-flash-preview"
 RETRIES = 2            # 18절 API 실패 대응: 1~2회 재시도
 SPACING_SEC = 7        # 무료 티어 분당 요청 제한(대략 10 RPM) 대비 간격
 QUOTA_BACKOFF = 65     # 429는 분 단위 창이 리셋될 때까지 기다린다
