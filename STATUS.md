@@ -96,6 +96,7 @@ temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions
 **부분 데이터에서 이미 나온 시그널 (강)**
 - **Sample [02] = KEEP.** `base_commandline_predictor.py:predict` ↔ `base_predictor.py:predict_with_flanks` 쌍. 응답 요약: "predict_with_flanks 는 flanks 를 받아 그대로 전달하지만, base 메서드는 무시함"
 - 이 KEEP 응답이 **아래 CASES 후보 1과 동일한 패턴**을 잡아냄. 유명 라이브러리가 아닌 저장소에서도 도구가 실제 override 차이를 찾아냈다는 증거
+- 응답 품질 심층 확인(프롬프트 규칙 1~5 대조): `why_clarify` 는 코드 사실만("검증 결과에서 플랭크 반환값 2·3번째 항목을 버리고"), `question` 은 확인 질문("의도된 동작인가요?"), confidence 0.85, evidence 배열 존재. **규칙 4개 통과, 유일한 약점은 `evidence[].line=0`** (프롬프트 예시값을 그대로 반환 — 프롬프트 개선 여지 있으나 판정에는 영향 없음)
 
 **CASES(리콜 테스트용) 3쌍 확정 — mhctools 기준**
 
@@ -110,6 +111,14 @@ temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions
 - 새 형식: `(fileA, funcA, fileB, funcB, truth)` — 파일 넘나드는 두 함수도 지원. 같은 파일이면 `fileA==fileB`
 - `get_func` 등 핵심 로직은 손대지 않음. `main()` 의 CASES 소비 부분과 프롬프트에 파일 경로 표기만 갱신
 - Same-file 대안(3후보) 실측 결과: 2개는 sample [05]·[07]과 중복(독립 신호 아님), 1개는 이름 유사성이 낮아 리콜 테스트로 약함. cross-file 확장이 더 나은 판정 근거
+
+**부수 확인 — `analyzer/` mhctools 스모크 테스트 (9/14 오후, quota 대기 중)**
+- `py -m analyzer.static_check repos/openvax__mhctools` → **정상 실행**. 결과 캐시: `cache/mhctools_static.json`
+  - **High-Churn(60일): 20건.** psf/requests 는 60일 창에서 0건이었으므로 극단적 대비. `mhctools/__init__.py` 22회로 최상위(predictor 추가마다 등록되는 파일). 나머지는 4~5회 균등 분포. mhctools 는 현재 활발히 유지되는 저장소라 실제 인수인계 시나리오에 더 가깝다는 방증
+  - Dead-Code: 39건 (variable 20 / function 9 / attribute 5 / method 3 / property 2). 규모상 psf/requests(89건)보다 작음
+- `py -m analyzer.test_map repos/openvax__mhctools` → **정상 실행**. 결과 캐시: `cache/mhctools_testmap.json`
+  - production 73개 중 **연결 52개(71%), 근거 없음 21개(29%)**. 근거 없는 파일이 대부분 `netmhc_pan.py`·`netmhc_cons.py`·`netmhc*.py` 계열. `tests/` 에 실제 테스트가 있어도 파일명이 매칭 규칙(`test_<모듈>.py`)과 다르면 못 잡는 한계 확인. 16.3 원 정의대로 "직접 연결된 근거를 찾지 못함"이라 단정하지 않고 표기하는 방침 유지
+- **결론**: `analyzer/`(③④⑥) 는 두 번째 저장소에서도 문제 없이 도는 것 확인. GO/축소 판정과 별개로 살아남는 모듈의 안정성 확보
 
 **중단 사유 — quota 소진 (개인 키까지)**
 - `gemini-3.6-flash` → 429 RESOURCE_EXHAUSTED (2·3·5·6·7·8·9번… 재시도 후에도 지속)
