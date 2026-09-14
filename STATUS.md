@@ -174,6 +174,7 @@ py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정�
   (`models.py:ok` ↔ `utils.py:is_ipv4_address` 등). PHASE 5 임베딩 후보 축소에서 같은 함정이 재현될 수 있다
 - **독스트링이 있으면 모델이 "문서화된 의도"로 보고 SKIP한다.** 제품 관점에서는 올바른 동작이지만,
   데모 저장소를 고를 때 이 특성을 고려해야 한다 (PHASE 16 데모 저장소 조건)
+- **`test_map` 은 facade 패턴에서 false negative 를 낸다 (9/14 mhctools 스모크 결과).** mhctools 는 `__init__.py` 에서 `NetMHCpan` 등을 re-export 하는 구조인데, 테스트는 `from mhctools import NetMHCpan` 로 씀. test_map 이 import 경로 기반 매칭이라 `netmhc_pan.py` 는 놓치고 `__init__.py` 만 연결됨. 21개 미연결 중 **16개(76%)가 실제로는 `tests/test_*.py` 가 존재**. 원 설계는 이 한계를 인지해 "**직접 연결된 근거를 찾지 못했다**" 문구를 쓰므로 표현은 안전. 다만 실무 저장소가 facade 를 흔히 쓰므로 PHASE 6·7 report 에서 이 한계를 명시적으로 언급하거나, `__init__.py` 의 re-export 를 역추적하는 개선을 고려. **진짜 테스트 없음은 5개** (`common.py`, `netmhc3.py`, `netmhc4.py`, `cleanup_context.py`, `input_file_formats.py`) — mhctools 실질 test coverage 는 68/73 (93%)
 
 ## Known Problems
 
