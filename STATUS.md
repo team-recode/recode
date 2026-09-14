@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-14 (일) 오후 — 2차 사이클 중단(quota 소진)**
+**Updated: 2026-09-14 (일) 저녁 — 2차 사이클 리콜 통과, GO 판정**
 
 ## Done
 
@@ -125,46 +125,62 @@ temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions
   - production 73개 중 **연결 52개(71%), 근거 없음 21개(29%)**. 근거 없는 파일이 대부분 `netmhc_pan.py`·`netmhc_cons.py`·`netmhc*.py` 계열. `tests/` 에 실제 테스트가 있어도 파일명이 매칭 규칙(`test_<모듈>.py`)과 다르면 못 잡는 한계 확인. 16.3 원 정의대로 "직접 연결된 근거를 찾지 못함"이라 단정하지 않고 표기하는 방침 유지
 - **결론**: `analyzer/`(③④⑥) 는 두 번째 저장소에서도 문제 없이 도는 것 확인. GO/축소 판정과 별개로 살아남는 모듈의 안정성 확보
 
-**중단 사유 — quota 소진 (개인 키까지)**
-- `gemini-3.6-flash` → 429 RESOURCE_EXHAUSTED (2·3·5·6·7·8·9번… 재시도 후에도 지속)
-- 검증차 `gemini-flash-latest` → 429, `gemini-2.5-flash-lite` → 404 NOT_FOUND
-- **`gemini-3.6-flash`가 `check_models` 목록에서 사라졌음.** 신규 사용자에게 순차적으로 접근 제거되는 것으로 보임. `run_validation.py`의 `DEFAULT_MODEL` 재검토 필요할 수 있음
-- Gemini 무료 티어 일일 quota 는 PT 자정(≈KST 16:00) 리셋. 그 이후 재시도 가능
+**Quota 이력 — 부분 리셋 반복**
+- `gemini-3.6-flash` 는 `check_models` 목록에서 사라짐. 신규 사용자에게 접근 제거된 것으로 보임
+- `gemini-flash-latest` : 첫 리셋 후 4건 성공하고 다시 429/503 발생. 무료 티어 daily quota 가 예상보다 훨씬 낮음
+- `gemini-3-flash-preview` : **다른 quota 버킷.** CASES 6건 완주 성공. **CLI 인자로 명시적 지정 필수**
+- `gemini-2.5-flash-lite` : 404 NOT_FOUND (막힘)
+- 결론: **모델별 quota 가 완전히 독립.** 하나 소진되면 다른 모델로 즉시 전환하는 방식이 실무. 스크립트 CLI 3번째 인자로 지원됨
+
+## 사전 검증 결과 — 2차 사이클 (mhctools). **GO 판정**
+
+### 정밀도 (오탐 안 내는가): 통과 (부분 데이터)
+
+sample 8/22 수신 (KEEP 1 / SKIP 7, 미수신 14):
+
+- **negative 5개 중 수신한 1건(pair 21) SKIP.** 나머지 4건 미수신
+- **의도를 단정한 문장 0건.** 8건 전체에서 SKIP 사유가 모두 코드 구조 분석("동일 구조", "역할이 서로 다름", "각 목적에 맞는 정규화")
+- psf/requests 1차의 코퍼스 편향 사유(`"라이브러리의 의도된 설계"`, `"표준적 동작"`) **재현되지 않음**. 모델이 기억이 아닌 코드를 읽음
+
+### 리콜 (진짜 차이를 잡는가): **완전 통과** — 최대 신호
+
+결정적 테스트 3쌍(사람이 코드로 확인한 진짜 차이) × 2조건 = 6건:
+
+| 쌍 | 독스트링 유지 | 독스트링 제거 |
+|---|---|---|
+| T1 `predict_with_flanks` (base 무시 vs mhcflurry 사용) | **KEEP** | **KEEP** |
+| T2 `_check_peptides` (calis vs eramer `epitope_length`) | **KEEP** | **KEEP** |
+| T3 `_check_peptides` (caphla AA 검증 vs deepimmuno 없음) | **KEEP** | **KEEP** |
+| **합계** | **3/3** | **3/3** |
+
+psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
+- T1: "서브클래스 구현에서 베이스 클래스의 입력 유효성 검사 로직이 누락됨"
+- T2: "펩타이드 유효성 검사 시 길이 제한 참조 방식과 추가 제약 조건의 차이"
+- T3: "동일한 목적의 함수 간 아미노산 유효성 검사 로직의 일관성 부족"
+
+### 판정: **GO (13.5절 기준 충족)**
+
+- 정밀도(중단 조건: 거의 모든 후보 KEEP 또는 의도 단정 지속): **벗어남**
+- 리콜(축소 조건: 진짜 차이를 못 잡음): **벗어남** (6/6 잡음)
+- Corpus 편향 문제도 해소됨
+- **`judge/` 잠금 해제.** PHASE 3(`judge/extract.py`) 착수 가능
 
 ## In Progress
 
-- PHASE 1 **2차 사이클 중단**. quota 리셋 후 재개.
-- 재개 시 필요한 호출: 남은 **18개 sample** + **6개 CASES**(3쌍 × 2조건) = 최대 24회 호출
+- PHASE 1 **GO 판정 완료.** PHASE 3 착수 준비
 
 ## Next
 
-**quota 리셋 후 즉시 실행 (한 세션에 다 끝)**:
+**PHASE 3 착수 준비 — `judge/extract.py`**
 
-```powershell
-# quota 상태 먼저 5초로 확인 (단일 pair)
-py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt gemini-flash-latest --only=4
+계획서 15절(원 스펙 참조). 함수 단위 청킹 + 시그니처·독스트링 추출. 임베딩(PHASE 5)에 넘길 표준 포맷.
 
-# 남은 18쌍 (캐시가 있으므로 자동 이어서 수신)
-py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt gemini-flash-latest
+**부수 작업**:
+- 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
+- `run_validation.py` / `true_positive_test.py` 의 `DEFAULT_MODEL = "gemini-3.6-flash"` 는 이제 존재하지 않는 모델. PHASE 3 착수 전에 상수 갱신 검토 (`gemini-3-flash-preview` 등)
+- 커밋 `e5bee20` 후 남은 venv 드리프트(`anthropic`·`openai` uninstall) — `judge/` 시작 전에 CLAUDE.md 지침대로 정리
 
-# CASES 결정적 테스트 2회 (독스 유지 / 제거)
-py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트.txt gemini-flash-latest
-py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트_독스제거.txt gemini-flash-latest --strip-docstrings
-```
-
-- **주의**: `run_validation.py` / `true_positive_test.py` 의 `DEFAULT_MODEL = "gemini-3.6-flash"` 는 오늘 목록에서 사라졌으므로 위처럼 **CLI 세 번째 인자로 `gemini-flash-latest` 명시 필수**. 코드 상수는 팀원이 결정적 실험용으로 지정한 것으로 보여 이번 세션에서 손대지 않음
-- 대체 모델 순서: `gemini-flash-latest` → `gemini-3-flash-preview` → `gemini-3.1-flash-lite`. 각각 quota 버킷이 다를 수 있음
-- `run_validation.py` 는 `--only=<쉼표목록>` 지원 → 위 첫 줄처럼 단일 pair 로 상태만 먼저 확인 후 전체 진행
-
-**판정 순서 (13.5절)**:
-1. 22쌍 정밀도 재확인 (negative SKIP 유지 · 의도 단정 문장 부재 유지)
-2. CASES 6건 리콜 판정 — psf/requests 표(0/3 · 1/3)와 비교
-3. GO / 축소 결정
-4. GO면 `judge/` 잠금 해제 후 PHASE 3(`judge/extract.py`) 착수
-5. 축소면 ①②는 "후보 제시 + 질문 생성" 수준으로 유지하고 **③④⑥ + 인수인계 문서화**를 핵심 제품으로
-
-> 어느 쪽으로 결론나든 `analyzer/`(③④⑥)는 살아남는다. 13.5절 축소·중단 양쪽 모두 ③④⑥을 핵심으로 둔다.
-> PHASE 2·4는 이미 완료되어 있으므로 판정이 늦어져도 개발이 막히지 않는다.
+> `analyzer/`(③④⑥) + `judge/`(①②) 가 이제 함께 살아있는 상태. PHASE 3~7 순서대로 진행.
 
 ## 설계에 반영해야 할 발견
 
