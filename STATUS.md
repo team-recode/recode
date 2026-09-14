@@ -97,6 +97,11 @@ temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions
 - **Sample [02] = KEEP.** `base_commandline_predictor.py:predict` ↔ `base_predictor.py:predict_with_flanks` 쌍. 응답 요약: "predict_with_flanks 는 flanks 를 받아 그대로 전달하지만, base 메서드는 무시함"
 - 이 KEEP 응답이 **아래 CASES 후보 1과 동일한 패턴**을 잡아냄. 유명 라이브러리가 아닌 저장소에서도 도구가 실제 override 차이를 찾아냈다는 증거
 - 응답 품질 심층 확인(프롬프트 규칙 1~5 대조): `why_clarify` 는 코드 사실만("검증 결과에서 플랭크 반환값 2·3번째 항목을 버리고"), `question` 은 확인 질문("의도된 동작인가요?"), confidence 0.85, evidence 배열 존재. **규칙 4개 통과, 유일한 약점은 `evidence[].line=0`** (프롬프트 예시값을 그대로 반환 — 프롬프트 개선 여지 있으나 판정에는 영향 없음)
+- **캐시 SKIP 3건 사유 분석 (강한 시그널)**: 
+  - [1] `_find_deepimmuno_home` ↔ `_find_deeptap_home`: "동일 구조의 함수, 도구별 이름 차이 외 논리적 불일치 없음"
+  - [3] `parses` ↔ `_normalize_output_allele`: "역할과 목적이 서로 다름"
+  - [5] `_mhcflurry_presentation_status` ↔ `_mhcflurry_affinity_status`: "인자 값 차이는 모델 종류별 설정 차이에서 기인, 모순/오류 없음"
+  - **SKIP 사유가 전부 코드 구조 분석 기반**. psf/requests 1차 사이클의 코퍼스 편향 사유(`"라이브러리의 의도된 설계"`, `"표준적 동작"`) 같은 도피성 답변 **0건**. 모델이 **기억을 꺼내는 게 아니라 코드를 읽는 중** → mhctools 가 검증 corpus 로 적합하다는 강한 GO 방향 시그널
 
 **CASES(리콜 테스트용) 3쌍 확정 — mhctools 기준**
 
@@ -136,16 +141,20 @@ temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions
 **quota 리셋 후 즉시 실행 (한 세션에 다 끝)**:
 
 ```powershell
+# quota 상태 먼저 5초로 확인 (단일 pair)
+py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt gemini-flash-latest --only=4
+
 # 남은 18쌍 (캐시가 있으므로 자동 이어서 수신)
-py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt
+py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt gemini-flash-latest
 
 # CASES 결정적 테스트 2회 (독스 유지 / 제거)
-py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트.txt
-py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트_독스제거.txt --strip-docstrings
+py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트.txt gemini-flash-latest
+py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트_독스제거.txt gemini-flash-latest --strip-docstrings
 ```
 
-- 대체 모델 시도 순서: `gemini-flash-latest` → `gemini-3-flash-preview` → `gemini-3.1-flash-lite`. CLI 3번째 인자로 모델 지정 가능
-- `run_validation.py` 는 `--only=<쉼표목록>` 지원 → 단일 pair 로 quota 상태 먼저 5초 확인 후 전체 진행
+- **주의**: `run_validation.py` / `true_positive_test.py` 의 `DEFAULT_MODEL = "gemini-3.6-flash"` 는 오늘 목록에서 사라졌으므로 위처럼 **CLI 세 번째 인자로 `gemini-flash-latest` 명시 필수**. 코드 상수는 팀원이 결정적 실험용으로 지정한 것으로 보여 이번 세션에서 손대지 않음
+- 대체 모델 순서: `gemini-flash-latest` → `gemini-3-flash-preview` → `gemini-3.1-flash-lite`. 각각 quota 버킷이 다를 수 있음
+- `run_validation.py` 는 `--only=<쉼표목록>` 지원 → 위 첫 줄처럼 단일 pair 로 상태만 먼저 확인 후 전체 진행
 
 **판정 순서 (13.5절)**:
 1. 22쌍 정밀도 재확인 (negative SKIP 유지 · 의도 단정 문장 부재 유지)
