@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-14 (일) 새벽**
+**Updated: 2026-09-14 (일) 오후 — 2차 사이클 중단(quota 소진)**
 
 ## Done
 
@@ -81,30 +81,67 @@ Re:Code의 타깃은 정반대(문서 없고 유명하지 않고 내부 규칙�
 temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions.py:542`의 `.upper()` 정규화 때문에
 실제로는 무의미하므로 12번이 오탐. AI Studio 웹에서 손으로 돌린 1건도 같은 오탐을 냈음.
 
+### PHASE 1 사전 검증 — 2차 사이클 착수, 도중 중단 (9/14 오후)
+
+**저장소 선정: `openvax/mhctools`** ★102 · 73 py파일 · Apache-2.0
+- 도메인 특화(MHC binding predictor Python wrapper, 바이오인포). 모델 학습 확률 낮음
+- 여러 predictor를 같은 인터페이스로 감싸는 구조 → wrapper 반복 패턴이 명확
+- 후보 3개(mhctools / crugroup/spade ★55 / lobbyboy-ssh/lobbyboy ★242) 중 규모·낯섦·구조 모두 만족
+
+**진행 완료**
+- `py -m analyzer.collect https://github.com/openvax/mhctools` → `repos/openvax__mhctools` (611커밋, head `c8ca5ba`)
+- `py -m scripts.make_samples repos/openvax__mhctools cache/mhctools_샘플25.txt` → **함수 466개 → 상한 250개 → 쌍 22개** (유사 7 / 일관성 10 / negative 5). psf/requests(22개)와 동일 규모
+- `py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt` → **4/22 수신 후 quota 소진**. 캐시 `cache/검증응답캐시.json`에 [1,2,3,5] 남아 있음
+
+**부분 데이터에서 이미 나온 시그널 (강)**
+- **Sample [02] = KEEP.** `base_commandline_predictor.py:predict` ↔ `base_predictor.py:predict_with_flanks` 쌍. 응답 요약: "predict_with_flanks 는 flanks 를 받아 그대로 전달하지만, base 메서드는 무시함"
+- 이 KEEP 응답이 **아래 CASES 후보 1과 동일한 패턴**을 잡아냄. 유명 라이브러리가 아닌 저장소에서도 도구가 실제 override 차이를 찾아냈다는 증거
+
+**CASES(리콜 테스트용) 3쌍 확정 — mhctools 기준**
+
+| 번호 | A | B | 사람이 확인한 진짜 차이 |
+|---|---|---|---|
+| T1 | `base_predictor.py:predict_with_flanks` | `mhcflurry.py:predict_with_flanks` | base 는 flanks 를 검증만 하고 버린 채 `predict(peptide_list)` 호출. mhcflurry override 는 flanks 를 predict 에 그대로 넘김 |
+| T2 | `calis.py:_check_peptides` | `eramer.py:_check_peptides` | eramer 만 `n <= self.epitope_length` 조건이 추가로 있음 |
+| T3 | `caphla.py:_check_peptides` | `deepimmuno.py:_check_peptides` | caphla 는 AA 유효성 검증 있음, deepimmuno 는 length 만 검증 |
+
+**`scripts/true_positive_test.py` CASES 튜플 형식 확장** — mhctools 의 실제 override 패턴이 cross-file 이라 필요.
+- 원 형식: `(rel, funcA, funcB, truth)` — 같은 파일 내 두 함수
+- 새 형식: `(fileA, funcA, fileB, funcB, truth)` — 파일 넘나드는 두 함수도 지원. 같은 파일이면 `fileA==fileB`
+- `get_func` 등 핵심 로직은 손대지 않음. `main()` 의 CASES 소비 부분과 프롬프트에 파일 경로 표기만 갱신
+- Same-file 대안(3후보) 실측 결과: 2개는 sample [05]·[07]과 중복(독립 신호 아님), 1개는 이름 유사성이 낮아 리콜 테스트로 약함. cross-file 확장이 더 나은 판정 근거
+
+**중단 사유 — quota 소진 (개인 키까지)**
+- `gemini-3.6-flash` → 429 RESOURCE_EXHAUSTED (2·3·5·6·7·8·9번… 재시도 후에도 지속)
+- 검증차 `gemini-flash-latest` → 429, `gemini-2.5-flash-lite` → 404 NOT_FOUND
+- **`gemini-3.6-flash`가 `check_models` 목록에서 사라졌음.** 신규 사용자에게 순차적으로 접근 제거되는 것으로 보임. `run_validation.py`의 `DEFAULT_MODEL` 재검토 필요할 수 있음
+- Gemini 무료 티어 일일 quota 는 PT 자정(≈KST 16:00) 리셋. 그 이후 재시도 가능
+
 ## In Progress
 
-- PHASE 1 **판정 보류**. 정밀도는 통과, 리콜은 corpus 문제로 측정 불가.
-  → 다른 저장소로 2차 사이클을 돌려야 GO/축소가 갈림.
+- PHASE 1 **2차 사이클 중단**. quota 리셋 후 재개.
+- 재개 시 필요한 호출: 남은 **18개 sample** + **6개 CASES**(3쌍 × 2조건) = 최대 24회 호출
 
 ## Next
 
-1. **2차 검증 저장소 선정** — 조건: Python, 유명하지 않을 것(모델이 학습하지 않았을 것),
-   독스트링이 얇을 것, 유사 로직이 실제로 반복될 것. 13.2절의 `psf/cachecontrol`은 여전히 유명 계열이라 재검토 필요
-2. **2차 사이클 실행** — 스크립트는 `scripts/` 에 커밋되어 있음. 저장소 URL만 정하면 약 10분
+**quota 리셋 후 즉시 실행 (한 세션에 다 끝)**:
 
-   ```powershell
-   py -m analyzer.collect https://github.com/<owner>/<repo>
-   py -m scripts.make_samples repos/<owner>__<repo> cache/검증샘플25.txt
-   py -m scripts.run_validation cache/검증샘플25.txt cache/검증결과25.txt
-   # true_positive_test.py 의 CASES 를 그 저장소에 맞게 손으로 채운 뒤
-   py -m scripts.true_positive_test repos/<owner>__<repo> cache/결정적테스트.txt
-   py -m scripts.true_positive_test repos/<owner>__<repo> cache/결정적테스트_독스트링제거.txt --strip-docstrings
-   ```
+```powershell
+# 남은 18쌍 (캐시가 있으므로 자동 이어서 수신)
+py -m scripts.run_validation cache/mhctools_샘플25.txt cache/mhctools_결과22.txt
 
-   - `scripts/check_models.py` — 429/404가 났을 때 남아 있는 모델 확인
-   - `run_validation.py` 는 성공한 응답을 `cache/검증응답캐시.json` 에 쌓는다. 할당량이 떨어지면 같은 명령을 다시 실행하면 실패분만 이어서 받는다
-   - **`true_positive_test.py` 의 `CASES` 는 사람이 직접 채워야 한다.** 저장소마다 "진짜 차이"가 다르므로 자동 생성할 수 없다. 현재 값은 psf/requests 기준
-3. **GO / 축소 판정** (13.5절)
+# CASES 결정적 테스트 2회 (독스 유지 / 제거)
+py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트.txt
+py -m scripts.true_positive_test repos/openvax__mhctools cache/mhctools_결정적테스트_독스제거.txt --strip-docstrings
+```
+
+- 대체 모델 시도 순서: `gemini-flash-latest` → `gemini-3-flash-preview` → `gemini-3.1-flash-lite`. CLI 3번째 인자로 모델 지정 가능
+- `run_validation.py` 는 `--only=<쉼표목록>` 지원 → 단일 pair 로 quota 상태 먼저 5초 확인 후 전체 진행
+
+**판정 순서 (13.5절)**:
+1. 22쌍 정밀도 재확인 (negative SKIP 유지 · 의도 단정 문장 부재 유지)
+2. CASES 6건 리콜 판정 — psf/requests 표(0/3 · 1/3)와 비교
+3. GO / 축소 결정
 4. GO면 `judge/` 잠금 해제 후 PHASE 3(`judge/extract.py`) 착수
 5. 축소면 ①②는 "후보 제시 + 질문 생성" 수준으로 유지하고 **③④⑥ + 인수인계 문서화**를 핵심 제품으로
 
@@ -130,6 +167,8 @@ temperature 0인데도 갈림. 대소문자 차이는 `models.py:471`·`sessions
 - `ReCode_개발계획서.md` 7.2절 500자 심사 폼 답변, 4절 아키텍처 설명에 "Claude API" 표현 잔존. 갱신 필요
 - 1차 사이클의 검증 샘플·결과 원본이 저장소 밖(`Downloads\ReCode_*.txt`)에 있어 릴레이로 전달되지 않음. `cache/` 는 gitignore 대상이라 재실행해도 커밋되지 않음. 판정 근거 원본을 팀이 공유해야 한다면 별도 위치를 정해야 함 (결론과 수치는 본 STATUS.md에 기록됨)
 - `scripts/` 는 3절 프로젝트 구조에 없는 디렉터리다. 제품 코드(`analyzer/` · `judge/`)가 아니라 PHASE 1 검증 도구라 분리했음
+- **로컬 venv 드리프트 (9/14).** `pip freeze` 와 `requirements.txt` 가 불일치. venv 에는 `anthropic==1.5.0`·`openai==3.13.0` 이 아직 남아 있고(커밋 `e5bee20`의 `pip uninstall` 부분이 실제 실행되지 않은 것으로 보임), 반대로 `sentence-transformers` 스택은 venv 에 없음. 현재 스크립트가 이 패키지를 쓰지 않아 PHASE 1 진행에는 무해. **`judge/` 잠금 해제 시** CLAUDE.md 지침대로 정리 필요
+- **`google-genai` 하위 패키지가 venv 에는 있으나 `requirements.txt` 에는 없음** (`google-auth`, `cryptography`, `distro`, `pyasn1`, `pycparser`, `tenacity` 등). 새 세션에서 clean install 시 재확보 여부를 검토. 지금 `pip freeze > requirements.txt` 를 해버리면 위 sentence-transformers 스택이 requirements 에서 지워지므로 판단 보류
 
 ## 다음 사람이 알아야 할 도구 특성
 
