@@ -28,18 +28,35 @@ Re:Code는 낯선 저장소를 넘겨받은 개발자가, 코드를 수정하기
 
 `git add .`은 금지하지 않는다. 다만 실행 전에 `git status`로 스테이징 대상을 훑고, `.env`·대용량 캐시·모델 파일이 실수로 잡히지 않는지 확인한다.
 
-## 현재 제약 (2026-09-13 이후)
+## 현재 단계 (2026-09-16 갱신)
 
-- `judge/` 폴더는 ①② 사전 검증(9/13 오전) 결과가 나오기 전까지 손대지 않는다.
-- 그 전까지 작업은 `analyzer/`(③④⑥)와 세팅 · 문서 위주.
-- 저장소 락 커밋(9/12)에는 `anthropic`, `openai`가 남아 있다. **`judge/` 코딩 시작 전 반드시 교체**:
-  ```powershell
-  pip uninstall anthropic openai -y
-  pip install google-genai sentence-transformers
-  pip freeze > requirements.txt
-  git add requirements.txt
-  git commit -m "chore: anthropic/openai 제거, google-genai/sentence-transformers 추가"
-  ```
+**PHASE 0~9 완료.** CLI 완성(`analyze.py`), 4개 저장소 finding 31건 측정, PHASE 15/16 준비 자료 정리.
+
+**진입 phase**:
+- **PHASE 10 (오늘)**: FastAPI 백엔드. 22절 스펙. `POST /api/analyze`, `GET /api/jobs/{id}`, `GET /api/jobs/{id}/report`. `analyze.py` 를 워커로 래핑. `jobs` 테이블 1개 (id, repo_url, status, progress, result_path, error, created_at). 8개 상태 (`queued` → `cloning` → `extracting` → `static_analysis` → `embedding` → `judging` → `generating_report` → `completed`/`failed`)
+- **PHASE 11 (오늘 밤~9/17)**: 프론트 3화면 (Landing/Progress/Report). 23절. Tailwind CDN + Jinja2 + SSE (sse-starlette). Markdown copy/download. 빌드 없음
+
+**금기 (범위 제외 확정, 5.1 일정표 개정)**:
+- 배지·리더보드 만들지 않음
+- 로그인·회원가입 없음
+- private 저장소 미지원
+- Tailwind 커스텀 빌드 없음 (CDN 만)
+
+**다음 phase 순서** (원 계획 그대로):
+- 12 자기참조 데모 (9/17): Re:Code 를 Re:Code 로 분석
+- 13 사용자 테스트 3~5명 (9/17~18): **사용자 오프라인 몫**. 개발자 지인 섭외 · 라벨링 요청
+- 14 배포 (9/17, Railway or Render 결정)
+- 15 심사 폼 답변 갱신 (9/18 **접수 마감**). 500자 본안은 9/15 완성, PHASE 13 결과만 반영
+- 16 데모 영상 촬영 (9/18~19). mhctools primary, cachecontrol backup
+- 17 최종 제출물 정리 (9/19): README, 대표 이미지, 스크린샷 5장
+- 9/20 **제출 마감**: 버그 수정만 (30절)
+
+**환경 준비 상태**:
+- ✅ `google-genai`, `sentence-transformers` 설치 (락 커밋 `e5bee20`, 9/14)
+- ✅ `anthropic`, `openai` 제거 (사용자 PC 실측 확인)
+- ⏳ **팀원 PC venv 드리프트**: `pip install -r requirements.txt` 후 `pip uninstall anthropic openai -y` 필요 (팀원 PC 만 해당, 사용자 PC 는 이미 정리됨). ⚠ 팀원 PC 에서 `pip freeze > requirements.txt` 는 **금지** (sentence-transformers 스택 소실)
+
+**세부 사항은 `STATUS.md` 최상단 참조.**
 
 ## 참고 문서
 

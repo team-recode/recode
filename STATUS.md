@@ -573,12 +573,47 @@ https://github.com/psf/cachecontrol
 - **BGM 없이 나레이션만**. 심사위원이 finding 을 실제로 읽을 시간 확보
 - **하지 말 것**: "정확도 N%" 주장 (21절 정확도 과장 금지 원칙). "저희 도구는 이런 걸 발견합니다" 정도의 서술
 
-#### PHASE 16 진입 전 확인 사항 (실측 필요)
+#### PHASE 16 진입 전 확인 사항 (실측)
 
 - [ ] mhctools finding [02] BigMHC kind_support 가 실제 리포트에 있는지 확인 (없으면 다른 강한 finding 으로 대체)
-- [ ] mhctools `__init__.py` High-Churn 22회가 최신 실측치인지 확인 (`py -m analyzer.static_check repos/openvax__mhctools`)
+- [x] **mhctools `__init__.py` High-Churn 22회 최신 실측 확인 (2026-09-16)** — `analyzer.static_check` 재실행 결과 `commits_60d: 22`, `last_changed: 2026-09-13`. 데모 스크립트 수치 그대로 사용 가능
+- [x] **mhctools test evidence gap 실측 (2026-09-16)** — `netmhc_pan.py` 커밋 38회+테스트 미연결, `netmhc_cons.py` 24회+미연결, `netmhc_pan28.py` 14회+미연결. facade 패턴 false negative 확인 (STATUS.md "설계에 반영해야 할 발견" 4번 그대로)
 - [ ] cachecontrol finding [02] 가 실제 리포트에 있는지 확인
 - [ ] 시연 URL 확정 (Railway or Render, PHASE 14 결정 후)
+
+### PHASE 11 랜딩 페이지 문구 확정 (2026-09-16, 27절 원안 그대로)
+
+**팀원이 PHASE 11 화면 개발 시 그대로 삽입.**
+
+**대표 헤드라인 (Landing 최상단, 대안 2개 중 택)**:
+- A) "코드는 남지만, 이유는 남지 않습니다." (23절 원안)
+- B) "Before you touch the repo, know what to ask." (23절 원안)
+
+**추천: A** (한국어, 문제 서사 즉시 전달, 7.1절 한 줄과 정합)
+
+**Problem·Insight·Solution 3문장** (27절 원안, 심사 폼 답변과도 정합):
+
+**Problem** (문제)
+> AI가 코드를 쓰는 속도는 빨라졌지만, 그 코드를 이해하는 속도는 빨라지지 않았습니다.
+
+**Insight** (통찰)
+> 코드는 무엇을 하는지는 보여주지만, 다음 개발자가 무엇을 확인해야 하는지는 알려주지 않습니다.
+
+**Solution** (해결)
+> Re:Code는 저장소의 코드와 변경 이력을 분석해, 다음 개발자가 손대기 전에 확인해야 할 맥락과 질문을 만들어줍니다.
+
+**예제 저장소 (Landing 하단, 클릭 시 캐시된 결과)**:
+- `psf/cachecontrol` (소형, 3건 강한 finding)
+- `openvax/mhctools` (중형, 도메인 특화)
+- `psf/requests` (대형이지만 인지도 최고)
+
+원래 27절이 요구하는 "예제 repository 2~3개" 조건 충족. django 는 대형이라 시연 시간 문제로 제외.
+
+**Landing UX 원칙 (23절)**:
+- 서비스 한 줄 설명 + URL 입력창 + Analyze 버튼 (필수)
+- 코드 품질 점수 전면에 두지 않음
+- "위험", "나쁜 코드" 표현 금지
+- 사용자가 다음 행동 알 수 있게
 
 ### PHASE 15·16 이미지 컨셉 초안 (2026-09-16 작성, 개발계획서 7.3절 대응)
 
