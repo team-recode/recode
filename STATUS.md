@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 9 측정 실행. 사람 라벨링 대기 (28건)**
+**Updated: 2026-09-15 (월) — PHASE 9 측정 완료. 사람 라벨링 대기 (31건)**
 
 ## Done
 
@@ -372,17 +372,22 @@ quotaValue : 20
 
 **측정 결과 (21절 항목)**
 
-| 저장소 | 모델 | 함수 | 후보 | 판정 | API | finding | SKIP | 오류 | clone | 분석(초) |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `psf/cachecontrol` | gemini-flash-latest | 67 | 9 | 9 | 3+9 | 2 | 5 | 2 | 0.8 | 272.9 |
-| `psf/requests` | gemini-3.5-flash | 235 | 35 | 20 | 20 | 11 | 9 | 0 | 1.0 | 419.5 |
-| `openvax/mhctools` | gemini-3-flash-preview | 631 | 100 | 8 | 0(캐시) | 5 | 3 | 0 | 0.7 | 9.2 |
-| `django/django` | gemini-3.1-flash-lite | 986 | 100 | 20 | 20 | 10 | 10 | 0 | 1.2 | 287.1 |
+| 저장소 | 급 | 모델 | 함수 | 후보 | 판정 | finding | SKIP | 오류 | 분석(초) |
+|---|---|---|---|---|---|---|---|---|---|
+| `psf/cachecontrol` | 소형 | gemini-3.6-flash | 67 | 9 | **9 (전수)** | 3 | 6 | 0 | 151.6 |
+| `psf/requests` | 중형 | gemini-3.5-flash | 235 | 35 | 20 (표본) | 11 | 9 | 0 | 419.5 |
+| `openvax/mhctools` | 중형 | gemini-3-flash-preview | 631 | 100 | 11 (표본) | 7 | 3 | 1 | 141.3 |
+| `django/django` | 대형 | gemini-3.1-flash-lite | 986 | 100 | 20 (표본) | 10 | 10 | 0 | 287.1 |
 
-- **총 finding 28건**, API 호출 43회(오늘), 토큰 69,097, **비용 $0** (무료 티어)
-- **대형 저장소에서 실패하지 않음** — django 986함수·후보 100쌍·오류 0. 정적 근거 수집이 82초로 가장 무겁다
-- `cachecontrol` 은 503(서버 과부하) 3건 → 재시도로 1건 회복, 2건은 quota 로 미완. **9쌍 중 7쌍 판정**
-- 18절 API 실패 대응이 실제로 작동: 503/429 가 나도 나머지 후보는 계속 처리하고 보고서까지 완주
+- **판정 60쌍 → finding 31건 (KEEP율 52%)**, 토큰 89,496, **비용 $0** (무료 티어)
+- **평균 분석 시간 249.9초.** 대부분이 LLM 대기(요청 간격 7초 + 응답 지연)이고, 정적 분석은 django 82초가 최대
+- **대형 저장소에서 실패하지 않음 (21절 목표 4번 확보)** — django 986함수·후보 100쌍·**오류 0**
+- 18절 API 실패 대응이 실전 검증됨: 503/429 가 나도 나머지 후보를 계속 처리하고 보고서까지 완주
+  (cachecontrol 1차 시도에서 503 3건 발생 → 재시도로 회복, 완주)
+- `mhctools` 는 quota 롤링 제한으로 11쌍에서 중단. `judged_pairs: 11 / candidate_pairs: 100` 으로 기록되어 표본임이 드러난다
+
+**quota 창은 자정 고정이 아니라 롤링이다.** 소진된 모델이 수십 분 뒤 일부 회복되는 것을 반복 관측했다.
+다만 회복분이 적어(3건 수준) 연속 작업에는 쓸 수 없다. 모델을 갈아타는 쪽이 실무적이다.
 
 **모델이 바뀌면 정밀도가 달라진다 — 측정에서 드러난 사실.**
 `gemini-3.5-flash` 는 requests 에서 finding 11건 중 **3건이 "HTTP 메서드 이름 대소문자 불일치"** 였다.
@@ -391,12 +396,12 @@ quotaValue : 20
 **모델 선택이 정밀도에 직접 영향을 준다.** 저장소마다 모델이 다르므로 저장소 간 유용률 비교는 교란되어 있다.
 `metrics.json` 의 `model` 필드에 기록됨.
 
-**사람 라벨링 대기 — `evaluation/` 에 시트 4개 생성**
+**사람 라벨링 대기 — `evaluation/` 에 시트 4개, 총 31건**
 ```
-evaluation/라벨_psf__cachecontrol.txt    finding  2건
-evaluation/라벨_psf__requests.txt        finding 11건
-evaluation/라벨_openvax__mhctools.txt    finding  5건
+evaluation/라벨_psf__cachecontrol.txt    finding  3건
+evaluation/라벨_openvax__mhctools.txt    finding  7건
 evaluation/라벨_django__django.txt       finding 10건
+evaluation/라벨_psf__requests.txt        finding 11건
 ```
 각 항목의 `라벨:` 뒤에 `useful` / `ambiguous` / `not_useful` 을 적고,
 오탐이면 `메모:` 에 이유를 한 줄 남긴다. 집계는 `py -m scripts.label_sheet count <파일>`.
@@ -412,18 +417,17 @@ evaluation/라벨_django__django.txt       finding 10건
 
 **PHASE 9 2단계 — 사람 라벨링** (사용자 작업. 21절이 요구하는 사람 판정이라 대신할 수 없음)
 
-`evaluation/` 의 시트 4개, **총 28건**. 건당 30초면 15분 내외.
+`evaluation/` 의 시트 4개, **총 31건**. 건당 30초면 15분 내외.
 
 ```powershell
 py -m scripts.label_sheet count evaluation/라벨_psf__requests.txt
 ```
 
-**PHASE 9 1단계 잔여 — 내일 quota 리셋 후 (약 14회)**
+**PHASE 9 1단계 선택 보강 — quota 리셋 후 (판정에 필수 아님)**
+`mhctools` 를 11 → 20 쌍으로 늘리면 표본이 고르게 된다. 캐시가 있어 9회만 더 쓰면 된다.
 ```powershell
-py analyze.py https://github.com/psf/cachecontrol --model=gemini-flash-latest   # 2쌍 남음
-py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20  # 12회
+py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20
 ```
-캐시가 있어 이미 판정한 건은 다시 호출하지 않는다.
 
 **3단계 — 결과 정리**
 21절 목표 수치 4개 기록: 유용 finding 비율 / 평균 분석 시간 / 평균 LLM 비용($0, 호출 N회) /

@@ -1,5 +1,5 @@
 # PHASE 9 사람 평가 — openvax__mhctools
-# finding 5건. 각 항목의 '라벨:' 뒤에 셋 중 하나를 적는다.
+# finding 7건. 각 항목의 '라벨:' 뒤에 셋 중 하나를 적는다.
 #   useful / ambiguous / not_useful
 # 오탐이면 '메모:' 에 왜 그런지 한 줄 남긴다. 그 메모가 프롬프트 개선 재료가 된다.
 
@@ -69,6 +69,34 @@
 질문   : NetMHCIIpan은 binding_affinity를, NetMHCpan41은 elution_score를 기본 모드로 사용하도록 서로 다르게 설정된 특별한 이유가 있나요?
 확인사실: mhctools/netmhcii_pan.py의 초기화 함수는 mode를 'binding_affinity'로 고정하여 부모 클래스를 호출하는 반면, mhctools/netmhc_pan41.py의 초기화 함수는 'elution_score'를 사용하고 있습니다. 두 함수 모두 유사한 구조로 래퍼 역할을 수행하지만 기본 예측 모드 설정이 서로 다릅니다.
 근거   : mhctools/netmhcii_pan.py:305, mhctools/netmhc_pan41.py:94
+
+라벨: 
+메모: 
+
+==============================================================================
+[06] confidence 0.9  (유사도 0.9596)
+     mhctools/parsing.py:parse_netmhciipan_stdout
+     mhctools/parsing.py:parse_netmhciipan43_stdout
+==============================================================================
+
+요약   : 선택적 출력 컬럼(BindingLevel) 처리를 위한 ignored_value_indices 설정의 일관성 확인
+질문   : parse_netmhciipan_stdout의 출력 결과에도 <=WB와 같은 선택적 지표가 포함되는데, parse_netmhciipan43_stdout과 달리 ignored_value_indices를 설정하지 않은 특별한 이유가 있나요?
+확인사실: 두 함수 모두 출력 예시에서 '<=SB', '<=WB'와 같은 선택적 지표가 행 끝에 포함될 수 있음을 보여줍니다(824행, 973행 등). 하지만 parse_netmhciipan43_stdout은 이를 처리하기 위해 ignored_value_indices를 명시적으로 정의하여 parse_stdout에 전달하는 반면, parse_netmhciipan_stdout은 이 설정을 생략하고 있습니다.
+근거   : mhctools/parsing.py:951, mhctools/parsing.py:1015
+
+라벨: 
+메모: 
+
+==============================================================================
+[07] confidence 0.9  (유사도 0.9596)
+     mhctools/parsing.py:parse_netmhcpan3_stdout
+     mhctools/parsing.py:parse_netmhcpan41_stdout
+==============================================================================
+
+요약   : NetMHCpan 4.1 파싱 시 elution_score 모드에서 Aff(nM) 데이터 제외 사유 확인
+질문   : parse_netmhcpan41_stdout 함수에서 mode가 'elution_score'일 때, 출력 결과에 Aff(nM) 컬럼이 존재함에도 불구하고 ic50_index를 None으로 설정하여 해당 데이터를 추출하지 않도록 설계하신 이유가 무엇인가요?
+확인사실: parse_netmhcpan3_stdout(400행)은 Aff(nM) 컬럼을 항상 추출하도록 설정되어 있으나, parse_netmhcpan41_stdout(484행)은 mode가 'elution_score'일 경우 ic50_index를 None으로 설정합니다. 4.1 버전의 docstring(460행) 예시를 보면 해당 모드에서도 Aff(nM) 컬럼이 15번 인덱스에 존재하는 것으로 확인됩니다.
+근거   : mhctools/parsing.py:450, mhctools/parsing.py:484
 
 라벨: 
 메모: 
