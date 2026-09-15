@@ -444,9 +444,38 @@ quotaValue : 20
 - 14: Railway 또는 Render 배포 결정 및 실행 (26절)
 
 **PHASE 15·16·17 — 9/18~19**
-- 15: 심사 폼 500자 답변 작성 (PHASE 13 결과 인용, 27절)
-- 16: 데모 스크립트 · 영상 촬영 (28절, `mhctools` 유력)
+- 15: 심사 폼 500자 답변 갱신 (PHASE 13 결과 반영, 27절). **본안은 이미 500자 완성 (2026-09-15)**, PHASE 13 유용률만 추가 문장으로 삽입 예정
+- 16: 데모 스크립트 · 영상 촬영 (28절) — **저장소 후보 비교 아래 참고**
 - 17: 최종 제출물 정리 (29절)
+
+### PHASE 16 데모 저장소 후보 비교 (2026-09-15 예비 조사)
+
+**추천: `mhctools` (primary), `cachecontrol` (backup)**
+
+| 저장소 | 유용률 | 규모 | 데모 강점 | 약점 |
+|---|---|---|---|---|
+| **mhctools** | 71% (5/7) | 631 함수, 100 후보 | 도메인 특화(MHC 예측) → "낯선 저장소" 서사 딱 맞음. T1/T2/T3 리콜 6/6 통과(PHASE 1). Static 근거 풍부 (High-Churn 20건, test coverage facade 한계 명시) | MHC 도메인 특수. 서브클래스 mode 차이 3건 개념 중복 |
+| **cachecontrol** | 100% (3/3) | 232 함수, 9 후보 | 소규모라 데모 짧음(2분 이내). finding [02] 캐시 URL 정규화 불일치는 잠재 버그 강도 최상 | 3건뿐이라 "이게 다냐" 느낌. HTTP 캐싱 지식 필요 |
+| django | 70% (7/10) | 986 함수 필터, 100 후보 | 규모 임팩트, 누구나 아는 저장소 | 2000 상한으로 15 파일만 남아 서사 애매. 답변에 Django 심층 지식 필요 |
+| requests | 55% (6/11) | 235 함수, 35 후보 | 인지도 최고 | **not_useful 5건 노출 위험** (심사장 오탐 지적 방어 어려움). 대소문자 오탐 부적합 |
+
+**데모용 강한 finding 후보 3개** (PHASE 16 스크립트 초안 재료):
+
+1. **mhctools BigMHC `kind_support`** (`[02]`): base 클래스는 `self.mhc_class` 인스턴스 변수 사용, BigMHC 서브클래스는 `mhc_class='I'` 하드코딩. → "이게 의도된 제약(MHC-I 전용)인가 미구현인가"
+2. **mhctools `predict_with_flanks` override** (PHASE 1 T1): base 는 flanks 를 검증만 하고 버림, mhcflurry override 는 flanks 를 predict 에 전달. → "base 가 인자를 무시하는 게 정상 동작인가"
+3. **cachecontrol `_load_from_cache` vs `cached_request`** (`[02]`): 같은 `CacheController` 클래스에서 URL 처리가 불일치 (raw vs `self.cache_url()` 정규화). → "캐시 쓰기/읽기 mismatch 아닌가"
+
+셋 다 **"코드만 봐선 답할 수 없고, 원저자에게 물어야 답이 나오는" 형태** → 제품 정의(인수인계 도구)에 정확히 부합.
+
+**mhctools 를 primary 로 선택한 이유**: (1) 도메인 특화로 "낯선 저장소" 서사에 자연스러움, (2) 강한 finding 2개 확보 가능(BigMHC + PHASE 1 T1), (3) static 근거 다양(churn 20건 + facade 한계 명시로 도구 정직성 노출).
+
+**cachecontrol 을 backup 으로 둔 이유**: mhctools 데모 준비 실패/시간 부족 시 대안. finding [02] 단일로 데모 가능(잠재 버그 강도 최상), 저장소가 작아 클론·분석 시간 총 3초 내외.
+
+**PHASE 16 진입 시 다음 사람이 할 것**:
+1. `py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20` (LLM 캐시 있어 quota 부담 낮음)
+2. `outputs/openvax__mhctools/HANDOFF.md` 열어 finding 목록 확인
+3. 위 강한 finding 3개가 실제로 리포트에 있는지 확인 (없으면 fallback 결정)
+4. 28절 데모 순서(URL 입력 → 실시간 분석 → 결과 → 질문 → First week → 자기참조)에 스크립트 매핑
 
 **부수 작업 (판정에 필수 아님)**:
 - mhctools 표본 11 → 20 보강: quota 리셋 후
@@ -480,8 +509,12 @@ quotaValue : 20
   - **할당량은 키(프로젝트) 단위이고, 같은 키 안에서도 모델별로 따로 걸린다.**
   - 사용자 개인 키를 새로 발급해 `.env`의 `GEMINI_API_KEY`를 교체하여 해소함. 팀원 로컬 `.env`는 그대로이므로 팀원은 리셋까지 위 모델들을 못 씀
 - **`gemini-2.5-flash`는 신규 사용자에게 막힘.** 404와 함께 `gemini-3.6-flash` 사용 권고 메시지 반환. `judge/llm.py`는 3.6-flash 이상을 기준으로 작성할 것
-- **참고 문서 2개가 저장소에 없음.** `ReCode_개발환경_및_세부실행계획.md`, `ReCode_개발계획서.md`. `CLAUDE.md`가 참조하는데 로컬에도 git에도 없음. 현재 사용 중인 사본(`Downloads\`)은 **Gemini 전환 전 판본** — 1.3절이 아직 "Claude API / OpenAI embedding", 290줄이 "console.anthropic.com", 3절 트리에 `analyzer/ # A 담당` 주석이 남아 2절 "폴더 분업을 두지 않는다"와 모순. 갱신 후 커밋 필요
-- `ReCode_개발계획서.md` 7.2절 500자 심사 폼 답변, 4절 아키텍처 설명에 "Claude API" 표현 잔존. 갱신 필요
+- **참고 문서 2개는 iCloud 에 있음.** `ReCode_개발환경_및_세부실행계획.md`, `ReCode_개발계획서.md` — `C:\Users\moonl\iCloudDrive\desktop\HAN\자격증, 대회 등\공모전\2026_원티드_AI_Championship\`. Gemini 전환은 반영됨(Claude/OpenAI 언급 0건 확인, 2026-09-15). 참고 문서 위치는 memory `reference_docs.md` 에 기록
+- **`ReCode_개발계획서.md` 잔존 stale 항목** (2026-09-15 확인):
+  - ✅ 4.1절 128행 · 7.4절 305행 `Spring Boot` → `FastAPI` 치환 완료 (2026-09-15)
+  - ⏳ 5.1 일정표: 원안(9/9~10 수집, 9/15 배포)과 실제 진행(9/12 세팅, 9/15 PHASE 3~9) 어긋남. 재작성은 결정 후
+  - ⏳ 5.4 역할: A/B 폴더 분업이 명시되어 있으나 실제는 릴레이 방식. 재작성 여부 결정 필요
+  - ⏳ 4.5절 · 7.3절 "9/15 배포" 언급 → 실제는 9/17 (PHASE 14). 확정 후 갱신
 - 1차 사이클의 검증 샘플·결과 원본이 저장소 밖(`Downloads\ReCode_*.txt`)에 있어 릴레이로 전달되지 않음. `cache/` 는 gitignore 대상이라 재실행해도 커밋되지 않음. 판정 근거 원본을 팀이 공유해야 한다면 별도 위치를 정해야 함 (결론과 수치는 본 STATUS.md에 기록됨)
 - `scripts/` 는 3절 프로젝트 구조에 없는 디렉터리다. 제품 코드(`analyzer/` · `judge/`)가 아니라 PHASE 1 검증 도구라 분리했음
 - **venv 드리프트는 개발자별로 다르다 (9/15 실측으로 정정).** `.venv/` 는 gitignore 대상이라 각자 별개다.
