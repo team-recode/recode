@@ -9,3 +9,5 @@ cache/
 .idea/
 .vscode/
 outputs/
+.claude/settings.local.json
+.claude/settings.local.*.json
