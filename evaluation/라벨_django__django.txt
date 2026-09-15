@@ -1,0 +1,144 @@
+# PHASE 9 사람 평가 — django__django
+# finding 10건. 각 항목의 '라벨:' 뒤에 셋 중 하나를 적는다.
+#   useful / ambiguous / not_useful
+# 오탐이면 '메모:' 에 왜 그런지 한 줄 남긴다. 그 메모가 프롬프트 개선 재료가 된다.
+
+==============================================================================
+[01] confidence 1.0  (유사도 0.9468)
+     django/db/models/fields/__init__.py:save_form_data
+     django/db/models/fields/related.py:save_form_data
+==============================================================================
+
+요약   : save_form_data 메서드의 데이터 저장 방식 차이
+질문   : 일반 필드와 달리 related 필드에서 set 메서드를 호출하여 데이터를 저장하도록 설계하신 의도가 무엇인가요?
+확인사실: 일반 필드에서는 setattr을 사용하여 값을 직접 할당하는 반면, related 필드에서는 getattr로 가져온 객체의 set 메서드를 호출하여 데이터를 저장하고 있습니다.
+근거   : django/db/models/fields/__init__.py:1141, django/db/models/fields/related.py:2186
+
+라벨: 
+메모: 
+
+==============================================================================
+[02] confidence 0.9  (유사도 0.9636)
+     django/db/models/fields/__init__.py:_check_decimal_places
+     django/db/models/fields/__init__.py:_check_max_digits
+==============================================================================
+
+요약   : decimal_places와 max_digits의 유효성 검사 조건 차이
+질문   : decimal_places는 0을 허용하고 max_digits는 0을 허용하지 않도록 설정한 기술적 배경이 무엇입니까?
+확인사실: _check_decimal_places는 0을 허용(decimal_places < 0)하지만, _check_max_digits는 0을 허용하지 않는(max_digits <= 0) 차이가 있습니다.
+근거   : django/db/models/fields/__init__.py:1816, django/db/models/fields/__init__.py:1847
+
+라벨: 
+메모: 
+
+==============================================================================
+[03] confidence 0.9  (유사도 0.9543)
+     django/db/models/fields/__init__.py:get_db_prep_value
+     django/db/models/fields/related.py:get_db_prep_value
+==============================================================================
+
+요약   : get_db_prep_value 구현 방식의 차이
+질문   : 관계 필드에서 target_field의 get_db_prep_value를 직접 호출하는 구조를 선택하신 특별한 이유가 있습니까?
+확인사실: 일반 필드(Field)의 get_db_prep_value는 get_prep_value를 호출하여 값을 변환하는 반면, 관계 필드(RelatedField)는 target_field의 get_db_prep_value를 재귀적으로 호출하고 있습니다.
+근거   : django/db/models/fields/__init__.py:2910, django/db/models/fields/related.py:1286
+
+라벨: 
+메모: 
+
+==============================================================================
+[04] confidence 0.9  (유사도 0.9419)
+     django/db/models/fields/__init__.py:get_db_converters
+     django/db/models/expressions.py:get_db_converters
+==============================================================================
+
+요약   : 데이터베이스 변환기(converter)를 가져오는 로직의 구현 방식 차이
+질문   : 두 함수 모두 get_db_converters라는 동일한 인터페이스를 구현하고 있는데, 함수 B에서 output_field의 변환기를 추가로 결합하는 설계 의도는 무엇입니까?
+확인사실: 함수 A는 필드 자체의 from_db_value 존재 여부만 확인하여 반환하는 반면, 함수 B는 특정 메서드 비교와 함께 output_field의 변환기까지 결합하여 반환하고 있습니다.
+근거   : django/db/models/fields/__init__.py:960, django/db/models/expressions.py:202
+
+라벨: 
+메모: 
+
+==============================================================================
+[05] confidence 0.9  (유사도 0.9404)
+     django/db/models/query.py:__repr__
+     django/db/models/base.py:__repr__
+==============================================================================
+
+요약   : QuerySet.__repr__과 Model.__repr__의 반환값 구성 차이
+질문   : QuerySet과 Model의 __repr__ 구현에서 문자열 포맷팅 시 각각 self.query와 self를 사용하도록 설계하신 의도가 무엇인가요?
+확인사실: QuerySet.__repr__은 self.query를 참조하는 반면, Model.__repr__은 self 객체 자체를 참조하여 문자열을 생성하고 있습니다.
+근거   : django/db/models/query.py:2558, django/db/models/base.py:640
+
+라벨: 
+메모: 
+
+==============================================================================
+[06] confidence 0.9  (유사도 0.9179)
+     django/contrib/admin/options.py:has_change_permission
+     django/contrib/admin/options.py:has_view_permission
+==============================================================================
+
+요약   : has_view_permission은 change 권한을 포함하여 확인하지만, has_change_permission은 change 권한만 확인합니다.
+질문   : has_view_permission 구현 시 change 권한을 함께 확인하도록 설계하신 의도가 무엇인지 궁금합니다.
+확인사실: has_change_permission은 'change' 권한만 확인하는 반면, has_view_permission은 'view' 권한과 'change' 권한 중 하나라도 있으면 True를 반환하도록 구현되어 있습니다.
+근거   : django/contrib/admin/options.py:652, django/contrib/admin/options.py:666
+
+라벨: 
+메모: 
+
+==============================================================================
+[07] confidence 0.8  (유사도 0.9414)
+     django/db/models/fields/__init__.py:_check_db_comment
+     django/db/models/base.py:_check_db_table_comment
+==============================================================================
+
+요약   : db_comment 체크 함수와 db_table_comment 체크 함수의 입력 파라미터 처리 방식 차이
+질문   : db_table_comment 체크 시 databases 파라미터가 None일 가능성을 고려하지 않은 특별한 이유가 있습니까?
+확인사실: _check_db_comment는 databases 파라미터에 기본값 None을 허용하고 475라인에서 이를 체크하지만, _check_db_table_comment는 databases를 필수 인자로 받고 해당 체크 로직이 없습니다.
+근거   : django/db/models/fields/__init__.py:475, django/db/models/base.py:1888
+
+라벨: 
+메모: 
+
+==============================================================================
+[08] confidence 0.8  (유사도 0.9315)
+     django/db/models/fields/__init__.py:to_python
+     django/db/models/fields/__init__.py:get_prep_value
+==============================================================================
+
+요약   : DateTimeField의 naive datetime 처리 로직 중 경고 메시지 생성 방식의 차이
+질문   : DateTimeField 내에서 naive datetime을 처리할 때, 두 함수에서 서로 다른 문자열 포맷팅 방식(f-string vs %)을 사용하게 된 배경이 있습니까?
+확인사실: to_python(1651-1656행)에서는 f-string을 사용하여 모델과 필드 이름을 구성하고 경고 메시지를 생성하는 반면, get_prep_value(1710-1715행)에서는 % 연산자를 사용하여 동일한 작업을 수행하고 있습니다.
+근거   : django/db/models/fields/__init__.py:1702, django/db/models/fields/__init__.py:1710
+
+라벨: 
+메모: 
+
+==============================================================================
+[09] confidence 0.8  (유사도 0.9213)
+     django/db/models/fields/__init__.py:get_db_prep_value
+     django/db/models/fields/__init__.py:get_db_prep_save
+==============================================================================
+
+요약   : get_db_prep_save에서 get_db_prep_value를 호출할 때 prepared 인자를 명시적으로 전달하는 방식의 차이
+질문   : get_db_prep_save에서 get_db_prep_value를 호출할 때 prepared=False를 명시적으로 전달하도록 설계하신 의도가 무엇인가요?
+확인사실: get_db_prep_value는 prepared 인자를 기본값 False로 정의하고 있으나, get_db_prep_save에서는 이를 명시적으로 전달하고 있습니다. 반면 get_db_prep_value의 다른 호출부들에서는 이 인자를 생략하는 경우가 존재합니다.
+근거   : django/db/models/fields/__init__.py:1048, django/db/models/fields/__init__.py:1052
+
+라벨: 
+메모: 
+
+==============================================================================
+[10] confidence 0.8  (유사도 0.9206)
+     django/db/models/fields/__init__.py:cast_db_type
+     django/db/models/fields/related.py:cast_db_type
+==============================================================================
+
+요약   : RelatedField의 cast_db_type 구현이 기본 필드 구현과 다르게 target_field에 위임함
+질문   : RelatedField에서 target_field의 cast_db_type을 직접 호출하도록 설계하신 이유가 무엇인가요?
+확인사실: 기본 필드 구현(함수 A)은 connection.ops.cast_data_types를 참조하여 타입을 결정하지만, RelatedField 구현(함수 B)은 target_field의 cast_db_type을 직접 호출하여 위임하고 있습니다.
+근거   : django/db/models/fields/__init__.py:939, django/db/models/fields/related.py:1320
+
+라벨: 
+메모: 

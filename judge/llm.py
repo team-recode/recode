@@ -167,8 +167,11 @@ def make_client():
     return genai.Client(api_key=key)
 
 
-def ask(client, model: str, prompt: str) -> tuple[str | None, str | None]:
-    """18절 API 실패 대응 — timeout, retry 1~2회, 실패해도 전체 분석은 계속."""
+def ask(client, model: str, prompt: str) -> tuple[str | None, str | None, int]:
+    """18절 API 실패 대응 — timeout, retry 1~2회, 실패해도 전체 분석은 계속.
+
+    (응답, 오류, 사용 토큰 수) 를 돌려준다. 토큰 수는 21절의 비용 측정에 쓴다.
+    """
     from google.genai import types
 
     config = types.GenerateContentConfig(
@@ -182,7 +185,8 @@ def ask(client, model: str, prompt: str) -> tuple[str | None, str | None]:
         try:
             resp = client.models.generate_content(model=model, contents=prompt, config=config)
             if resp.text:
-                return resp.text, None
+                usage = getattr(resp, "usage_metadata", None)
+                return resp.text, None, getattr(usage, "total_token_count", 0) or 0
             last_err = "빈 응답"
         except Exception as exc:                     # noqa: BLE001 — 원인을 그대로 보여준다
             last_err = f"{type(exc).__name__}: {exc}"
@@ -194,7 +198,7 @@ def ask(client, model: str, prompt: str) -> tuple[str | None, str | None]:
             print(f"       재시도 {attempt + 1}/{RETRIES}, {wait}초 대기")
             time.sleep(wait)
 
-    return None, last_err
+    return None, last_err, 0
 
 
 def judge(clone_path: Path, pairs: list[dict], model: str = DEFAULT_MODEL,
@@ -208,20 +212,23 @@ def judge(clone_path: Path, pairs: list[dict], model: str = DEFAULT_MODEL,
 
     client = make_client()
     findings, seen_questions = [], set()
-    stats = {"keep": 0, "skip": 0, "dropped": 0, "error": 0, "low_confidence": 0, "duplicate": 0}
-    called = 0
+    # 21절 측정용: 실제 API 호출과 캐시 히트를 구분해 센다. 토큰 수는 비용 근거가 된다.
+    stats = {"keep": 0, "skip": 0, "dropped": 0, "error": 0, "low_confidence": 0,
+             "duplicate": 0, "api_calls": 0, "cache_hits": 0, "tokens": 0}
 
     for i, pair in enumerate(pairs, 1):
         key = f"{pair['a']['file']}:{pair['a']['name']}|{pair['b']['file']}:{pair['b']['name']}"
 
         if key in cache:
             text = cache[key]
+            stats["cache_hits"] += 1
         else:
             # quota 를 아끼려 간격을 둔다. PHASE 1에서 간격 없이 던져 하루치를 태운 적이 있다.
-            if called:
+            if stats["api_calls"]:
                 time.sleep(SPACING_SEC)
-            text, err = ask(client, model, build_prompt(clone_path, pair))
-            called += 1
+            text, err, tokens = ask(client, model, build_prompt(clone_path, pair))
+            stats["api_calls"] += 1
+            stats["tokens"] += tokens
             if err:
                 stats["error"] += 1
                 print(f"  [{i:3d}] ERROR    {err[:70]}")

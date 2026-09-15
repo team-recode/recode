@@ -1,0 +1,74 @@
+# PHASE 9 사람 평가 — openvax__mhctools
+# finding 5건. 각 항목의 '라벨:' 뒤에 셋 중 하나를 적는다.
+#   useful / ambiguous / not_useful
+# 오탐이면 '메모:' 에 왜 그런지 한 줄 남긴다. 그 메모가 프롬프트 개선 재료가 된다.
+
+==============================================================================
+[01] confidence 1.0  (유사도 0.9674)
+     mhctools/netmhc_pan4.py:__init__
+     mhctools/netmhc_pan42.py:__init__
+==============================================================================
+
+요약   : NetMHCpan4와 NetMHCpan42의 초기화 시 기본 mode 설정이 서로 다름
+질문   : NetMHCpan4는 elution_score를, NetMHCpan42는 binding_affinity를 기본 모드로 사용하도록 서로 다르게 설정하신 특별한 이유가 있나요?
+확인사실: mhctools/netmhc_pan4.py의 __init__은 부모 클래스 호출 시 mode를 'elution_score'로 전달하는 반면, mhctools/netmhc_pan42.py의 __init__은 'binding_affinity'를 전달하고 있다. 두 클래스가 버전 차이 외에 유사한 구조를 가짐에도 불구하고 서로 다른 기본 동작 모드를 선택하고 있다.
+근거   : mhctools/netmhc_pan4.py:92, mhctools/netmhc_pan42.py:112
+
+라벨: 
+메모: 
+
+==============================================================================
+[02] confidence 0.9  (유사도 0.9691)
+     mhctools/bigmhc.py:kind_support
+     mhctools/wrapper_base.py:kind_support
+==============================================================================
+
+요약   : kind_support 메서드 내 mhc_dependence 및 mhc_class 설정 방식의 차이
+질문   : BigMHC 구현체에서 mhc_dependence를 'single_allele'로 설정하고 mhc_class를 'I'로 고정하여 반환하도록 설계된 이유가 무엇인가요?
+확인사실: BigMHC 클래스에서는 mhc_dependence를 'single_allele'로, mhc_class를 'I'로 고정하여 반환하지만, WrapperBase 클래스에서는 각각 'none'과 인스턴스 속성인 self.mhc_class를 사용하고 있다.
+근거   : mhctools/bigmhc.py:157, mhctools/wrapper_base.py:73
+
+라벨: 
+메모: 
+
+==============================================================================
+[03] confidence 0.9  (유사도 0.9684)
+     mhctools/netmhc_pan41.py:__init__
+     mhctools/netmhc_pan42.py:__init__
+==============================================================================
+
+요약   : NetMHCpan 4.1과 4.2의 초기화 시 기본 mode 값이 서로 다름
+질문   : NetMHCpan 4.1과 4.2 버전에서 각각 binding_affinity와 elution_score를 기본 mode로 다르게 설정하신 이유가 무엇인가요?
+확인사실: NetMHCpan41 클래스는 초기화 시 mode를 'binding_affinity'로 설정하는 반면, NetMHCpan42 클래스는 'elution_score'로 설정하고 있다. 두 버전의 생성자 구조는 동일하지만 내부적으로 전달하는 기본 mode 값에 차이가 존재한다.
+근거   : mhctools/netmhc_pan41.py:115, mhctools/netmhc_pan42.py:93
+
+라벨: 
+메모: 
+
+==============================================================================
+[04] confidence 0.9  (유사도 0.9683)
+     mhctools/sample.py:predict_proteins_dataframe
+     mhctools/netcleave.py:predict_proteins_dataframe
+==============================================================================
+
+요약   : predict_proteins_dataframe 함수 간의 sample_name 결정 방식 및 데이터 구조 처리 차이
+질문   : netcleave.py의 predict_proteins_dataframe에서 predict_proteins가 반환하는 딕셔너리의 키 정보를 무시하고 외부 인자인 sample_name을 일괄 적용하도록 설계된 이유가 무엇인가요?
+확인사실: mhctools/sample.py의 함수는 predict_proteins의 반환값인 딕셔너리 키에서 sample_name을 동적으로 추출하여 사용하며 중첩된 딕셔너리 구조를 처리합니다. 반면 mhctools/netcleave.py의 함수는 predict_proteins의 반환값 중 값(values)만 순회하며, sample_name은 함수의 인자로 전달된 값을 일괄적으로 사용합니다.
+근거   : mhctools/sample.py:87, mhctools/netcleave.py:461
+
+라벨: 
+메모: 
+
+==============================================================================
+[05] confidence 0.9  (유사도 0.9602)
+     mhctools/netmhcii_pan.py:__init__
+     mhctools/netmhc_pan41.py:__init__
+==============================================================================
+
+요약   : 상속 클래스 초기화 시 고정된 mode 인자값의 차이
+질문   : NetMHCIIpan은 binding_affinity를, NetMHCpan41은 elution_score를 기본 모드로 사용하도록 서로 다르게 설정된 특별한 이유가 있나요?
+확인사실: mhctools/netmhcii_pan.py의 초기화 함수는 mode를 'binding_affinity'로 고정하여 부모 클래스를 호출하는 반면, mhctools/netmhc_pan41.py의 초기화 함수는 'elution_score'를 사용하고 있습니다. 두 함수 모두 유사한 구조로 래퍼 역할을 수행하지만 기본 예측 모드 설정이 서로 다릅니다.
+근거   : mhctools/netmhcii_pan.py:305, mhctools/netmhc_pan41.py:94
+
+라벨: 
+메모: 
