@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 3·5 완료**
+**Updated: 2026-09-15 (월) — PHASE 3·5·6 완료**
 
 ## Done
 
@@ -225,20 +225,59 @@ psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
 다음 개발자가 받는 질문("파일마다 `_check_peptides` 구현이 다른데 의도된 것인가")은 동일하다.
 CASES 는 리콜 측정용으로 사람이 고른 것이지 embed 의 출력 명세가 아니다.
 
+### PHASE 6 — LLM 판정 (9/15)
+
+`judge/llm.py` 구현. 18절 스펙. 모델 `gemini-3-flash-preview`, temperature 0.
+
+**PHASE 1 의 프롬프트 약점 해결 — `evidence[].line = 0` 문제.**
+원인은 프롬프트가 줄 번호를 줄 방법이 없었던 것. 두 가지로 고침:
+1. 소스를 **실제 줄 번호를 붙여서** 넘긴다(`  207 |     def predict_with_flanks(...)`)
+2. 응답의 line 이 0이거나 함수 범위 밖이면 **함수 시작 줄로 보정**한다. 근거가 항상 실제 코드를 가리키게 강제
+→ 실측 결과 `evidence.line = 0` **0건**, 모두 실제 줄 번호(92·112·157·461 등)
+
+**18절 강제 규칙 구현 상태**
+
+| 규칙 | 구현 |
+|---|---|
+| JSON schema 강제 | `response_mime_type="application/json"` + 응답 필드 검증. 필수 필드가 비면 폐기 |
+| 근거 없는 finding 금지 | evidence 가 비었거나 두 함수 파일과 무관하면 폐기 |
+| 작성자 의도 단정 금지 | 프롬프트 규칙 1·2 (PHASE 1 검증본 그대로) |
+| "AI가 생성해서 생긴 문제" 표현 금지 | 프롬프트 규칙 7 + `BANNED_PATTERNS` 정규식으로 후단에서 한 번 더 차단 |
+| 동일한 질문 중복 제거 | 질문 텍스트 정규화 후 중복 제거 |
+| 낮은 confidence 제외 | `MIN_CONFIDENCE = 0.5` |
+| API 실패 대응 | timeout 120초, retry 2회, 429는 65초 백오프, 실패 후보는 건너뛰고 계속 |
+
+**실행 중 발견 — 품질 이탈을 규칙 9·10 으로 잡음.**
+1차 실행(15쌍)에서 13건 KEEP 이 나왔는데 그중 둘이 제품 정의에서 벗어났다:
+- "일관성을 위해 `__str__` 출력에 `program_name` 을 **추가할 필요가 있습니까**" → 질문이 아니라 **개선 제안**
+- "`__str__` 메서드 내 **따옴표 사용 일관성** 부족" → 동작과 무관한 **스타일 지적**
+
+Re:Code 는 코드 품질 검사기가 아니므로 프롬프트에 규칙 2개를 추가:
+- 규칙 9: 코드를 고치라고 제안하지 마라. question 은 "왜 이렇게 되어 있는지" 를 묻는 형태여야 한다
+- 규칙 10: 동작에 영향 없는 스타일 차이(따옴표·공백·이름 표기)만으로는 finding 을 만들지 마라
+
+재실행(8쌍) 결과 **두 건 모두 SKIP 으로 전환**, 남은 5건은 전부 "~한 이유가 무엇인가요?" 형태.
+
+**프롬프트 해시를 캐시 키에 넣음.** `cache/llm/{repo}_{model}_{prompt_sha8}.json`.
+프롬프트가 바뀌면 이전 응답이 자동 무효화된다. 규칙 9·10 을 추가했을 때 실제로 필요했다.
+
+**레이어링**: `judge/llm.py` 는 `make_client`·retry 상수를 자체 보유한다.
+처음엔 `scripts/run_validation` 에서 import 했으나 **제품 코드가 검증 도구에 의존하는 역방향**이라 되돌렸다.
+`scripts/` 쪽 프롬프트(`PROMPT_HEAD`)는 PHASE 1 재현용으로 원본을 유지하므로 `judge/llm.py` 의 것과 **의도적으로 다르다**(18절 규칙 6~10 추가분).
+
 ## In Progress
 
-- PHASE 5 완료. 다음은 **PHASE 6(`judge/llm.py`)**
+- PHASE 6 완료. 다음은 **PHASE 7(`judge/report.py`)**
 
 ## Next
 
-**PHASE 6 — `judge/llm.py`** (계획서 18절)
+**PHASE 7 — `judge/report.py`** (계획서 19절)
 
-PHASE 5 후보를 LLM에 넘겨 판정. 18절 출력 스키마 · 강제 규칙 · API 실패 대응(timeout, retry 1~2회, 실패 후보는 건너뛰고 계속).
+`HANDOFF.md` 생성. 19절의 문서 구조(1. Repository overview ~ 7. First week)와 출력 원칙.
 
-- 프롬프트는 `scripts/make_samples.py` 의 `PROMPT_HEAD` 가 PHASE 1 에서 검증된 원본이다. 그대로 출발점으로 쓸 것
-- 모델은 `gemini-3-flash-preview` (2차 사이클에서 CASES 6/6 통과). quota 소진 시 CLI 인자로 교체
-- **PHASE 1 에서 확인된 프롬프트 약점**: 응답의 `evidence[].line` 이 예시값 `0` 그대로 돌아옴. 18절 스키마가 line 을 요구하므로 여기서 고칠 것
-- **설계 주의**: 함수 두 개만 잘라 던지면 오탐이 난다(아래 "설계에 반영해야 할 발견" 1번). 호출 경로/정규화 지점을 함께 줄지 검토
+- 입력은 `analyzer/`(③④⑥ evidence) + `judge/llm.py`(①② finding) 양쪽을 합친 것
+- 16.2 / 16.3 이 지정한 문구(`"정적 호출 경로에서 사용 근거를 찾지 못했습니다."` 등)가 이미 데이터에 들어 있으므로 report 에서 다시 만들지 말 것
+- **아래 "PHASE 7 에서 처리할 것" 항목 먼저 확인**
 
 **부수 작업**:
 - 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
@@ -246,6 +285,15 @@ PHASE 5 후보를 LLM에 넘겨 판정. 18절 출력 스키마 · 강제 규칙 
 - ⏳ **Venv 드리프트 정리는 다음 세션으로 연기.** CLAUDE.md 지침대로 `pip uninstall anthropic openai -y` 필요하나, PHASE 3 착수 세션 시작 시 함께 처리. `sentence-transformers` 스택은 PHASE 5 시작 시 설치. 지금 `requirements.txt` 재생성은 부작용(sentence-transformers 항목 소실) 있어 보류
 
 > `analyzer/`(③④⑥) + `judge/`(①②) 가 이제 함께 살아있는 상태. PHASE 3~7 순서대로 진행.
+
+## PHASE 7 에서 처리할 것
+
+- **의미가 같은 질문이 중복된다.** 18절의 "동일한 질문 중복 제거"를 텍스트 완전일치로 구현했는데,
+  mhctools 실측에서 finding 5건 중 **3건이 같은 주제**였다(기본 `mode` 설정 차이를 파일 쌍만 바꿔 3번:
+  `netmhc_pan4`↔`netmhc_pan42`, `netmhc_pan41`↔`netmhc_pan42`, `netmhcii_pan`↔`netmhc_pan41`).
+  문장이 다르므로 텍스트 비교로는 안 걸린다. HANDOFF 문서에서 **주제별로 묶어** 한 항목으로 보여주거나,
+  같은 함수명이 반복되는 finding 을 그룹핑할 것
+- **`test_map` 의 facade false negative** 를 report 에서 명시할 것 (아래 "설계에 반영해야 할 발견" 참조)
 
 ## 설계에 반영해야 할 발견
 

@@ -108,7 +108,7 @@ def main() -> int:
         label = f"{rel_a.split('/')[-1]}:{a_name} <-> {rel_b.split('/')[-1]}:{b_name}"
         print(f"  [T{i + 1}] {label}")
         print(f"        진짜 차이: {truth}")
-        print(f"        결과: {verdict} — {summary[:88]}\n")
+        print(f"        결과: {verdict}, {summary[:88]}\n")
 
         out.append(f"\n{'=' * 78}\n[T{i + 1}] {label}  ->  {verdict}\n"
                    f"{'=' * 78}\n")

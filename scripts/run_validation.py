@@ -86,7 +86,7 @@ def ask(client, model: str, prompt: str) -> tuple[str | None, str | None]:
 
         if attempt < RETRIES:
             wait = QUOTA_BACKOFF if "RESOURCE_EXHAUSTED" in last_err else 8 * (attempt + 1)
-            print(f"       재시도 {attempt + 1}/{RETRIES} — {wait}초 대기")
+            print(f"       재시도 {attempt + 1}/{RETRIES}, {wait}초 대기")
             time.sleep(wait)
 
     return None, last_err
