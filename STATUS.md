@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-14 (일) 저녁 — 2차 사이클 리콜 통과, GO 판정**
+**Updated: 2026-09-15 (월) — PHASE 3 완료**
 
 ## Done
 
@@ -165,15 +165,40 @@ psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
 - Corpus 편향 문제도 해소됨
 - **`judge/` 잠금 해제.** PHASE 3(`judge/extract.py`) 착수 가능
 
+### PHASE 3 — 함수 추출 및 절삭 (9/15)
+
+`judge/extract.py` 구현. 15절 스펙대로. **완료 조건 3개 전부 통과:**
+
+| 완료 조건 | 결과 |
+|---|---|
+| requests 수준 저장소에서 함수 목록 생성 | 711개(테스트 포함) / 268개(`--no-tests`) |
+| django 같은 대형 저장소에서 2,000개 상한 작동 | py 2,616파일 → **정확히 2,000개**, 17.8초 |
+| 함수 추출 때문에 메모리가 폭발하지 않음 | **피크 36MB** (`tracemalloc` 실측) |
+
+- 출력 필드는 15절 그대로 + `is_test` 추가 (15절 "테스트 파일도 추출은 하되 임베딩 후보에서 필요에 따라 제외"를 호출측이 판단할 수 있게)
+- `signature` 는 `ast.unparse` 로 생성. `async def` 여부와 반환 타입까지 담아 PHASE 5에서 유실되지 않게 함
+- **상한 처리 방식**: 커밋 수 내림차순으로 파일을 정렬해 앞에서부터 추출하고, 상한에 닿으면 멈춘다.
+  파일 중간에서 자르지 않으므로 한 파일의 함수가 반만 남는 일이 없다.
+  django 실측 결과 남은 15개 파일이 전부 커밋 최상위(`db/models/query.py` 643회 ~ 최저 284회)
+- 파싱 실패 파일은 건너뛴다. 근거로 쓸 수 없는 것은 추측하지 않는다
+
+**`analyzer/test_map.py` 의 `_commit_counts` → `commit_counts` 로 공개 이름 변경.**
+`judge/extract.py` 가 같은 계산(파일별 커밋 수)을 필요로 해 복제 대신 재사용했다.
+호출부 1곳 포함 2줄 변경. `test_evidence_gap` 회귀 확인 완료(psf/requests 22개 파일 동일).
+
 ## In Progress
 
-- PHASE 1 **GO 판정 완료.** PHASE 3 착수 준비
+- PHASE 3 완료. PHASE 4는 이미 완료 상태이므로 다음은 **PHASE 5(`judge/embed.py`)**
 
 ## Next
 
-**PHASE 3 착수 준비 — `judge/extract.py`**
+**PHASE 5 — `judge/embed.py`** (계획서 17절)
 
-계획서 15절(원 스펙 참조). 함수 단위 청킹 + 시그니처·독스트링 추출. 임베딩(PHASE 5)에 넘길 표준 포맷.
+`sentence-transformers` 로 함수 임베딩 → 유사 함수 후보 축소. 착수 전 아래 둘을 먼저 처리:
+1. **venv 에 `sentence-transformers` 설치 확인** (아래 Known Problems 참조 — 개발자별로 상태가 다름)
+2. 17절의 threshold·후보 필터 재확인
+
+> 설계 주의: 아래 "설계에 반영해야 할 발견"의 **코드 유사도 ≠ 의미 유사도** 항목이 PHASE 5의 핵심 함정이다.
 
 **부수 작업**:
 - 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
@@ -202,8 +227,16 @@ psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
 - `ReCode_개발계획서.md` 7.2절 500자 심사 폼 답변, 4절 아키텍처 설명에 "Claude API" 표현 잔존. 갱신 필요
 - 1차 사이클의 검증 샘플·결과 원본이 저장소 밖(`Downloads\ReCode_*.txt`)에 있어 릴레이로 전달되지 않음. `cache/` 는 gitignore 대상이라 재실행해도 커밋되지 않음. 판정 근거 원본을 팀이 공유해야 한다면 별도 위치를 정해야 함 (결론과 수치는 본 STATUS.md에 기록됨)
 - `scripts/` 는 3절 프로젝트 구조에 없는 디렉터리다. 제품 코드(`analyzer/` · `judge/`)가 아니라 PHASE 1 검증 도구라 분리했음
-- **로컬 venv 드리프트 (9/14).** `pip freeze` 와 `requirements.txt` 가 불일치. venv 에는 `anthropic==1.5.0`·`openai==3.13.0` 이 아직 남아 있고(커밋 `e5bee20`의 `pip uninstall` 부분이 실제 실행되지 않은 것으로 보임), 반대로 `sentence-transformers` 스택은 venv 에 없음. 현재 스크립트가 이 패키지를 쓰지 않아 PHASE 1 진행에는 무해. **`judge/` 잠금 해제 시** CLAUDE.md 지침대로 정리 필요
-- **`google-genai` 하위 패키지가 venv 에는 있으나 `requirements.txt` 에는 없음** (`google-auth`, `cryptography`, `distro`, `pyasn1`, `pycparser`, `tenacity` 등). 새 세션에서 clean install 시 재확보 여부를 검토. 지금 `pip freeze > requirements.txt` 를 해버리면 위 sentence-transformers 스택이 requirements 에서 지워지므로 판단 보류
+- **venv 드리프트는 개발자별로 다르다 (9/15 실측으로 정정).** `.venv/` 는 gitignore 대상이라 각자 별개다.
+  - **사용자 PC (9/15 실측)**: `anthropic`·`openai` **없음**(`e5bee20` 의 `pip uninstall` 은 실제로 실행됐고 `Successfully uninstalled` 확인됨), `sentence-transformers 6.0.1`·`torch 2.14.0`·`google-genai 2.23.0` **있음**. `requirements.txt` 와 일치. 정리할 것 없음
+  - **팀원 PC**: `anthropic`·`openai` 가 남아 있고 `sentence-transformers` 가 없다고 보고됨. 이는 `e5bee20` 이후 `pip install -r requirements.txt` 를 다시 돌리지 않아 생긴 상태로 보인다
+  - **해야 할 일은 `pip uninstall` 이 아니라 팀원 venv 재설치**:
+    ```powershell
+    pip install -r requirements.txt
+    pip uninstall anthropic openai -y   # 남아 있는 잔여분만 제거
+    ```
+  - ⚠️ **팀원 PC 에서 `pip freeze > requirements.txt` 를 돌리면 안 된다.** 그 venv 에는 `sentence-transformers` 스택이 없어서 requirements 에서 지워진다. 재설치 후에만 freeze 할 것
+- **`google-genai` 하위 패키지는 `requirements.txt` 에 이미 들어 있다 (9/15 실측으로 정정).** `google-auth==2.58.0`, `cryptography==50.0.1`, `distro==1.9.0`, `pyasn1==0.6.4`, `pycparser==3.0`, `tenacity==9.1.4` 모두 존재. `e5bee20` 의 `pip freeze` 에 포함됐음. 조치 불필요
 
 ## 다음 사람이 알아야 할 도구 특성
 
@@ -212,6 +245,10 @@ psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
 - `python-dotenv`의 `load_dotenv()`는 **스크립트 파일 위치**에서 위로 올라가며 `.env`를 찾는다. 저장소 밖 스크립트에서는 경로를 명시해야 함
 - `analyzer/test_map.py`는 `static_check.py`의 `EXCLUDE_DIRS`·`iter_python_files`를 import한다. 3절 구조가 공용 util 파일을 허용하지 않아 모듈 간 import로 처리함
 - `high_churn()`의 출력 키는 16.1이 정한 `commits_60d` 고정. `days` 인자를 바꿔 부르면 키 이름과 실제 창이 어긋남
+- **대형 저장소에서 2,000개 상한은 "파일 수"를 크게 줄인다.** django 실측에서 py 2,616파일 중 **15개 파일만 남았다.** 커밋 최상위 파일들이 각각 함수를 수백 개씩 갖고 있기 때문. 15절 규칙("commit 빈도 높은 파일부터 남긴다") 그대로의 동작이지만, 인수인계 관점에서 넓게 훑기보다 깊게 파는 선택이다. PHASE 9에서 대형 저장소를 다룰 때 이 트레이드오프를 재검토할 것
+- `judge/extract.py` 는 `analyzer/collect.py`(`CollectError`)와 `analyzer/test_map.py`(`commit_counts`)를 import 한다. 파이프라인 순서가 collect → extract 라 방향은 단방향이며 순환하지 않음
+- **큰 저장소 clone 은 체크아웃이 끝나기 전에 `.git/HEAD` 가 먼저 생긴다.** clone 완료 판정에 `.git/HEAD` 존재를 쓰면 안 된다(django 실측에서 경합 발생, `git log` 가 `your current branch appears to be broken` 로 실패). `git rev-parse HEAD` 성공 여부로 판정할 것
+- `repos/` 는 gitignore 대상이지만 디스크를 많이 쓴다. django 클론 하나가 약 180MB
 
 ## 참고 규약
 

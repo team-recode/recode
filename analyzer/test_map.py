@@ -72,7 +72,7 @@ def _imported_modules(test_path: Path, rel_path: Path) -> set[str]:
     return modules
 
 
-def _commit_counts(clone_path: Path) -> dict[str, int]:
+def commit_counts(clone_path: Path) -> dict[str, int]:
     """파일별 전체 커밋 수를 git 이력 한 번으로 센다."""
     log = _git(["log", "--pretty=format:", "--name-only"], cwd=clone_path, timeout=120)
     counts = defaultdict(int)
@@ -112,7 +112,7 @@ def test_evidence_gap(clone_path: Path) -> list[dict]:
             for file in by_module.get(module, ()):
                 related[file].add(test_file)
 
-    counts = _commit_counts(clone_path)
+    counts = commit_counts(clone_path)
     results = []
     for file in production:
         linked = sorted(related.get(file, ()))
