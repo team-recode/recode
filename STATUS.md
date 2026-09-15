@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 9 측정 완료. 사람 라벨링 대기 (31건)**
+**Updated: 2026-09-15 (월) — PHASE 9 완료 (AI 소스 검증 baseline: 유용률 68%, n=31). 다음은 PHASE 10 (FastAPI)**
 
 ## Done
 
@@ -396,50 +396,72 @@ quotaValue : 20
 **모델 선택이 정밀도에 직접 영향을 준다.** 저장소마다 모델이 다르므로 저장소 간 유용률 비교는 교란되어 있다.
 `metrics.json` 의 `model` 필드에 기록됨.
 
-**사람 라벨링 대기 — `evaluation/` 에 시트 4개, 총 31건**
-```
-evaluation/라벨_psf__cachecontrol.txt    finding  3건
-evaluation/라벨_openvax__mhctools.txt    finding  7건
-evaluation/라벨_django__django.txt       finding 10건
-evaluation/라벨_psf__requests.txt        finding 11건
-```
-각 항목의 `라벨:` 뒤에 `useful` / `ambiguous` / `not_useful` 을 적고,
-오탐이면 `메모:` 에 이유를 한 줄 남긴다. 집계는 `py -m scripts.label_sheet count <파일>`.
+### PHASE 9 사람 라벨링 — 방향 변경 (2026-09-15 오후)
 
-> `evaluation/` 은 3절 구조에 없는 디렉터리다. 사람 평가 기록은 PHASE 15 심사 자료의 근거가 되므로
-> `cache/`(gitignore) 가 아니라 커밋되는 위치에 두었다.
+정식 사람 평가는 원 계획대로 **PHASE 13 (개발자 3~5명 외부 검증, 9/17~18)** 에서 수행. 오늘은 데모 저장소 선택과 오탐 유형 파악을 위한 **AI 소스 검증 baseline** 만 실행.
+
+**총계 (n=31, AI 초안 + 소스 근거 재검토)**: useful 21 (68%) / ambiguous 2 (6%) / not_useful 8 (26%)
+
+| 저장소 | useful | ambiguous | not_useful | 유용률 |
+|---|---|---|---|---|
+| cachecontrol (3) | 3 | 0 | 0 | 100% |
+| mhctools (7) | 5 | 2 | 0 | 71% |
+| django (10) | 7 | 0 | 3 | 70% |
+| requests (11) | 6 | 0 | 5 | 55% |
+
+**데모 저장소 후보 (PHASE 16 용)**: `mhctools` 유력. 유용률·규모 균형 + 도메인 특화로 데모 스크립트 짜기 좋음. `cachecontrol` 은 유용률 100%지만 표본 3건이라 작음, `requests` 는 대소문자 오탐 코퍼스 편향으로 유용률 저조.
+
+**데모용 강한 finding 후보 2개** (잠재 버그성):
+- `cachecontrol [02]`: `_load_from_cache:152` 는 `request.url` raw, 같은 클래스의 `cached_request:175` 는 `self.cache_url()` 로 정규화. URL 처리 불일치 → 캐시 쓰기/읽기 mismatch 가능성
+- `requests [08]`: `_find` 는 None-value 쿠키 반환, `_find_no_duplicates` 는 None 이면 KeyError. 반환 타입 힌트 차이가 **실제 동작 divergence** 를 정확히 반영
+
+**오탐 8건 유형 분류 (프롬프트 개선 재료, 재튜닝은 제출 후로 이관)**:
+1. **컨텍스트 부재 (5건, requests [01]~[05])**: 함수 두 개만 잘라 던져 `.upper()` 정규화·`setdefault(..., 기본값)` 방어 코드를 못 봄. 이미 "설계에 반영해야 할 발견" 첫 항목으로 기록된 원칙의 재확인
+2. **스타일 필터 누락 (2건, django [08][09])**: 18절 규칙 10 이 f-string vs %, 기본값과 동일한 값의 명시적 전달을 걸러내지 못함
+3. **클래스 성격 판정 부재 (1건, django [05])**: QuerySet(쿼리 래퍼)/Model(도메인 인스턴스) 근본 성격이 다른데 `__repr__` 차이를 finding 으로 만듦
+
+**ambiguous 2건**: mhctools `[03][05]` — 같은 "버전별 default mode" 패턴이 3번 노출된 것 중 뒤 2건. 리포트 계층의 묶기(合并) 로직이 raw 3건 → 리포트 1건으로 압축하므로 사용자 경험에서는 문제 없음. **묶기가 실제로 필요한 이유의 근거**.
+
+**라벨 시트 상태**: `evaluation/라벨_*.txt` 4개에 AI 초안 라벨이 로컬에 채워진 상태(`git status` modified). **커밋 안 함** — PHASE 13 정식 라벨링이 심사 폼 근거이므로 그때 빈 시트로 재시작. 로컬 유지는 사용자 참고용. 실수 커밋 방지 원하면 `git restore evaluation/라벨_*.txt`.
+
+> `evaluation/` 은 3절 구조에 없는 디렉터리다. **PHASE 13 결과가 심사 폼 정식 근거.** 오늘 AI baseline 은 데모 저장소 선택 · 오탐 유형 파악용 내부 자료.
 
 ## In Progress
 
-- PHASE 9 진행 중. 0단계·1단계(오늘 몫) 완료. **사람 라벨링 대기**
+- PHASE 9 완료. AI 소스 검증 baseline 확보. **PHASE 13 (9/17~18) 에서 개발자 외부 검증 예정**
 
 ## Next
 
-**PHASE 9 2단계 — 사람 라벨링** (사용자 작업. 21절이 요구하는 사람 판정이라 대신할 수 없음)
+**PHASE 10 — FastAPI 연결 (9/16, 팀원 세션)**
+22절 스펙. 3개 endpoint (`POST /api/analyze`, `GET /api/jobs/{id}`, `GET /api/jobs/{id}/report`). `analyze.py` 를 래핑. job 상태 8개 (`queued` → `cloning` → ... → `completed`/`failed`). DB `jobs` 테이블 1개만 (id, repo_url, status, progress, result_path, error, created_at).
 
-`evaluation/` 의 시트 4개, **총 31건**. 건당 30초면 15분 내외.
+**PHASE 11 — 화면 3개 (9/16~17, 팀원 세션)**
+23절. Landing / Progress (SSE) / Report. HANDOFF.md 렌더링 + Markdown copy/download.
 
-```powershell
-py -m scripts.label_sheet count evaluation/라벨_psf__requests.txt
-```
+**PHASE 12·13·14 — 9/17 병렬**
+- 12: Re:Code 자기참조 데모 (Re:Code 를 Re:Code 로 분석, 24절)
+- 13: 개발자 3~5명 사용자 테스트 (25절). **빈 라벨 시트 재배포** → useful/ambiguous/not_useful 라벨링. 심사 폼 정식 근거
+- 14: Railway 또는 Render 배포 결정 및 실행 (26절)
 
-**PHASE 9 1단계 선택 보강 — quota 리셋 후 (판정에 필수 아님)**
-`mhctools` 를 11 → 20 쌍으로 늘리면 표본이 고르게 된다. 캐시가 있어 9회만 더 쓰면 된다.
-```powershell
-py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20
-```
+**PHASE 15·16·17 — 9/18~19**
+- 15: 심사 폼 500자 답변 작성 (PHASE 13 결과 인용, 27절)
+- 16: 데모 스크립트 · 영상 촬영 (28절, `mhctools` 유력)
+- 17: 최종 제출물 정리 (29절)
 
-**3단계 — 결과 정리**
-21절 목표 수치 4개 기록: 유용 finding 비율 / 평균 분석 시간 / 평균 LLM 비용($0, 호출 N회) /
-대형 repo 실패 여부(**django 오류 0 으로 이미 확보**).
-**21절 지시대로 "내부 검증(n=N)" 으로 표기하고 정확도를 과장하지 않는다.**
+**부수 작업 (판정에 필수 아님)**:
+- mhctools 표본 11 → 20 보강: quota 리셋 후
+  ```powershell
+  py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20
+  ```
+- ✅ `DEFAULT_MODEL` 갱신 완료 (9/14 저녁): `gemini-3-flash-preview` 로 고정
+- ⏳ **팀원 PC 의 venv 드리프트 정리** (사용자 PC 는 9/15 실측으로 이미 정리됨). 팀원 세션 시작 시:
+  ```powershell
+  pip install -r requirements.txt
+  pip uninstall anthropic openai -y
+  ```
+  ⚠ 팀원 PC 에서 `pip freeze > requirements.txt` 는 **금지** (sentence-transformers 스택 소실)
 
-**부수 작업**:
-- 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
-- ✅ `DEFAULT_MODEL` 갱신 완료 (9/14 저녁): `gemini-3.6-flash` → `gemini-3-flash-preview`. mhctools 리콜 6/6 통과 모델로 확정
-- ⏳ **Venv 드리프트 정리는 다음 세션으로 연기.** CLAUDE.md 지침대로 `pip uninstall anthropic openai -y` 필요하나, PHASE 3 착수 세션 시작 시 함께 처리. `sentence-transformers` 스택은 PHASE 5 시작 시 설치. 지금 `requirements.txt` 재생성은 부작용(sentence-transformers 항목 소실) 있어 보류
-
-> `analyzer/`(③④⑥) + `judge/`(①②) 가 이제 함께 살아있는 상태. PHASE 3~7 순서대로 진행.
+> `analyzer/`(③④⑥) + `judge/`(①②) + CLI(`analyze.py`) 가 모두 살아있는 상태. 이제 웹 계층(PHASE 10~11).
 
 
 ## 설계에 반영해야 할 발견
