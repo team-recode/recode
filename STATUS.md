@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 3·5·6·7 완료, 파이프라인 연결됨**
+**Updated: 2026-09-15 (월) — PHASE 9 측정 실행. 사람 라벨링 대기 (28건)**
 
 ## Done
 
@@ -293,26 +293,142 @@ dead-code 상위 10건 중 9건이 `tests/` 의 미사용 변수였고 "그 외 
 저장소가 달라도 "## 5 는 항상 Test evidence gaps" 가 유지되도록 일부러 재번호를 매기지 않았다.
 보기 문제라고 판단되면 재번호로 바꿀 수 있다.
 
+### PHASE 8 — CLI MVP 완성 (9/15)
+
+`analyze.py` (저장소 루트). 20절대로 **웹 없이 한 명령으로 제품 핵심이 동작한다.**
+
+```powershell
+py analyze.py https://github.com/psf/requests
+```
+
+실측 출력 — 20절 예시 형식 그대로:
+```
+[1/5] 저장소 수집: https://github.com/openvax/mhctools
+      openvax/mhctools 커밋 626개, head 529a8f7 (0.9초)
+[2/5] 함수 추출 및 유사 후보 축소 (threshold 0.8)
+      함수 631개 -> 후보 100쌍 (1.8초)
+[3/5] LLM 판정 (gemini-3-flash-preview, 후보 8쌍, 전체 100쌍 중 --limit)
+      finding 5건 / SKIP 3 / 폐기 0 / 오류 0 (3.0초)
+[4/5] 정적 근거 수집 (High-Churn / Dead-Code / Test Gap)
+[5/5] HANDOFF.md 생성  101줄 / 섹션 7개
+
+Analysis complete.
+Report: outputs/openvax__mhctools/HANDOFF.md
+```
+
+**옵션**
+- `--skip-llm` — LLM 없이 정적 근거(③④⑥)만으로 보고서 생성. **quota 가 죽어도 제품이 돌아간다.**
+  13.5절 "축소" 시나리오의 출력과 같다. psf/requests 실측 4단계 7초
+- `--limit=N` — 후보 N개만 판정. quota 절약용
+- `--model=이름` — quota 소진 시 교체 (모델별 quota 독립)
+- `--threshold=0.80` — 유사도 하한
+
+**산출물**: `outputs/{owner}__{repo}/` 에 `HANDOFF.md` · `pairs.json` · `findings.json`.
+중간 산출물을 남기는 이유는 PHASE 9 품질 검증에서 단계별로 되짚어야 하기 때문이다.
+`outputs/` 는 `.gitignore` 에 추가했다 (분석 대상은 남의 저장소이고 매번 재생성되는 artifact).
+**PHASE 12 자기참조 데모 결과는 따로 저장할 위치를 정해야 한다** — 그건 커밋 대상이다.
+
+**20절 "이 단계 완료 전 금지" 준수**: Tailwind·랜딩·리더보드·배지·발표영상·DB 모델링 전부 손대지 않음.
+
+### PHASE 9 — 0단계 계측 도구 (9/15)
+
+21절이 요구하는 측정 항목 중 기록되지 않던 것들을 채웠다. **LLM 호출 없이 완료.**
+
+- **`analyze.py` 가 `outputs/{repo}/metrics.json` 을 쓴다.** 21절 측정 항목 전부:
+  clone/analysis/embed/llm/static 시간, 함수 수, 후보 수, 판정 수, **실제 API 호출 수와 캐시 히트 수를 분리**,
+  토큰 수, 비용(무료 티어 $0), finding/skip/폐기/오류 건수
+- **`judge/llm.py` 가 `api_calls` · `cache_hits` · `tokens` 를 집계한다.** 이전에는 캐시 히트와 실제 호출이
+  구분되지 않아 21절의 "LLM calls" 를 잴 수 없었다. `ask()` 가 `usage_metadata.total_token_count` 도 함께 반환
+- **`scripts/label_sheet.py`** — 21절 사람 평가용. `make` 로 채점표를 만들고 `count` 로 집계한다.
+  자동 채점이 아니다. 라벨은 사람이 적는다
+  ```powershell
+  py -m scripts.label_sheet make outputs/psf__requests/findings.json cache/label_requests.txt
+  py -m scripts.label_sheet count cache/label_requests.txt
+  ```
+  대소문자·앞뒤 공백을 허용하고, 목록에 없는 값은 조용히 넘기지 않고 "알 수 없는 값" 으로 보고한다
+
+**실측 예시** (mhctools, 전부 캐시 히트):
+`clone 0.7초 / 전체 9.2초 / 함수 631개 / 후보 100쌍 / 판정 8쌍 / API 0회 · 캐시 8회 / finding 5건`
+
+**PHASE 9 측정 대상 실측 규모** (LLM 없이 측정 완료):
+
+| 저장소 | 급 | 함수 | 필터 통과 | 후보(=LLM 호출 수) |
+|---|---|---|---|---|
+| `psf/cachecontrol` | 소형 | 232 | 67 | **9** |
+| `psf/requests` | 중형 | 711 | 235 | **35** |
+| `openvax/mhctools` | 중형 | 1,814 | 631 | **100** |
+| `django/django` | 대형 | 2,000 | 986 | **100** |
+
+### PHASE 9 — 1단계 측정 실행 (9/15). **오늘 quota 소진, 일부 남음**
+
+**무료 티어 한도를 정확히 확인했다.** 429 응답의 상세:
+```
+quotaId    : GenerateRequestsPerDayPerProjectPerModel-FreeTier
+quotaValue : 20
+```
+**모델당·프로젝트당 하루 20회.** 쓸 수 있는 모델 4개 기준 하루 최대 80회.
+전수 판정은 229회라 3일이 필요해 **저장소당 표본 20 으로 축소**했다(21절이 "샘플 수가 작으면 내부 검증으로 표현"을 허용).
+`metrics.json` 에 `candidate_pairs` 와 `judged_pairs` 가 모두 남으므로 표본이라는 사실이 숨겨지지 않는다.
+
+**측정 결과 (21절 항목)**
+
+| 저장소 | 모델 | 함수 | 후보 | 판정 | API | finding | SKIP | 오류 | clone | 분석(초) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `psf/cachecontrol` | gemini-flash-latest | 67 | 9 | 9 | 3+9 | 2 | 5 | 2 | 0.8 | 272.9 |
+| `psf/requests` | gemini-3.5-flash | 235 | 35 | 20 | 20 | 11 | 9 | 0 | 1.0 | 419.5 |
+| `openvax/mhctools` | gemini-3-flash-preview | 631 | 100 | 8 | 0(캐시) | 5 | 3 | 0 | 0.7 | 9.2 |
+| `django/django` | gemini-3.1-flash-lite | 986 | 100 | 20 | 20 | 10 | 10 | 0 | 1.2 | 287.1 |
+
+- **총 finding 28건**, API 호출 43회(오늘), 토큰 69,097, **비용 $0** (무료 티어)
+- **대형 저장소에서 실패하지 않음** — django 986함수·후보 100쌍·오류 0. 정적 근거 수집이 82초로 가장 무겁다
+- `cachecontrol` 은 503(서버 과부하) 3건 → 재시도로 1건 회복, 2건은 quota 로 미완. **9쌍 중 7쌍 판정**
+- 18절 API 실패 대응이 실제로 작동: 503/429 가 나도 나머지 후보는 계속 처리하고 보고서까지 완주
+
+**모델이 바뀌면 정밀도가 달라진다 — 측정에서 드러난 사실.**
+`gemini-3.5-flash` 는 requests 에서 finding 11건 중 **3건이 "HTTP 메서드 이름 대소문자 불일치"** 였다.
+이는 PHASE 1 에서 이미 오탐으로 확인된 건이다(`models.py:471`·`sessions.py:542` 의 `.upper()` 로 정규화되어 무의미).
+같은 상황에서 `gemini-3-flash-preview` 는 PHASE 6 에서 SKIP 했다.
+**모델 선택이 정밀도에 직접 영향을 준다.** 저장소마다 모델이 다르므로 저장소 간 유용률 비교는 교란되어 있다.
+`metrics.json` 의 `model` 필드에 기록됨.
+
+**사람 라벨링 대기 — `evaluation/` 에 시트 4개 생성**
+```
+evaluation/라벨_psf__cachecontrol.txt    finding  2건
+evaluation/라벨_psf__requests.txt        finding 11건
+evaluation/라벨_openvax__mhctools.txt    finding  5건
+evaluation/라벨_django__django.txt       finding 10건
+```
+각 항목의 `라벨:` 뒤에 `useful` / `ambiguous` / `not_useful` 을 적고,
+오탐이면 `메모:` 에 이유를 한 줄 남긴다. 집계는 `py -m scripts.label_sheet count <파일>`.
+
+> `evaluation/` 은 3절 구조에 없는 디렉터리다. 사람 평가 기록은 PHASE 15 심사 자료의 근거가 되므로
+> `cache/`(gitignore) 가 아니라 커밋되는 위치에 두었다.
+
 ## In Progress
 
-- PHASE 7 완료. **①②③④⑥ 전체 파이프라인이 CLI 로 연결됨.** 다음은 **PHASE 8(CLI MVP 완성)**
+- PHASE 9 진행 중. 0단계·1단계(오늘 몫) 완료. **사람 라벨링 대기**
 
 ## Next
 
-**PHASE 8 — CLI MVP 완성** (계획서 20절)
+**PHASE 9 2단계 — 사람 라벨링** (사용자 작업. 21절이 요구하는 사람 판정이라 대신할 수 없음)
 
-현재는 단계별 CLI 를 손으로 이어 붙여야 한다. 20절대로 한 번에 도는 진입점을 만든다.
+`evaluation/` 의 시트 4개, **총 28건**. 건당 30초면 15분 내외.
 
-현재 전체 파이프라인 (mhctools 기준 실행 순서):
 ```powershell
-py -m analyzer.collect https://github.com/openvax/mhctools
-py -m judge.embed repos/openvax__mhctools --threshold=0.80 --json=cache/mhctools_pairs.json
-py -m judge.llm repos/openvax__mhctools cache/mhctools_pairs.json --json=cache/mhctools_findings.json
-py -m judge.report repos/openvax__mhctools cache/mhctools_findings.json --out=HANDOFF.md
+py -m scripts.label_sheet count evaluation/라벨_psf__requests.txt
 ```
 
-- 20절의 "이 단계 완료 전 금지" 항목을 먼저 확인할 것
-- `judge/embed.py` 가 내부에서 `judge/extract.py` 를 부르므로 extract 는 따로 실행할 필요 없음
+**PHASE 9 1단계 잔여 — 내일 quota 리셋 후 (약 14회)**
+```powershell
+py analyze.py https://github.com/psf/cachecontrol --model=gemini-flash-latest   # 2쌍 남음
+py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20  # 12회
+```
+캐시가 있어 이미 판정한 건은 다시 호출하지 않는다.
+
+**3단계 — 결과 정리**
+21절 목표 수치 4개 기록: 유용 finding 비율 / 평균 분석 시간 / 평균 LLM 비용($0, 호출 N회) /
+대형 repo 실패 여부(**django 오류 0 으로 이미 확보**).
+**21절 지시대로 "내부 검증(n=N)" 으로 표기하고 정확도를 과장하지 않는다.**
 
 **부수 작업**:
 - 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
@@ -357,6 +473,8 @@ py -m judge.report repos/openvax__mhctools cache/mhctools_findings.json --out=HA
 
 - **vulture는 후보를 찾으면 exit 3을 낸다** (1이 아님). `ExitCode(NoDeadCode=0, InvalidInput=1, InvalidCmdlineArguments=2, DeadCode=3)`. exit 1은 문법 오류 파일만 건너뛰고 나머지 스캔은 계속되므로 실패로 처리하면 안 됨
 - **Windows 콘솔 인코딩**: Python이 stdout을 cp949로 씀. JSON을 파일로 리다이렉트하면 한글이 cp949로 저장됨. PowerShell 화면 출력은 정상
+- **`print` 로 나가는 문자열에 em-dash(`—`, U+2014)를 쓰지 말 것.** cp949 로 인코딩되지 않아 `UnicodeEncodeError` 로 죽는다. 세 번 겪었다(`judge/llm.py`, `scripts/run_validation.py`, `scripts/label_sheet.py`). 쉼표나 하이픈으로 대체할 것. 독스트링·주석·파일에 쓰는 문자열은 UTF-8 이라 무해하다
+- **파일에 쓴 JSON 을 다시 읽을 때 인코딩 주의.** `py -m ... > out.json` 으로 리다이렉트하면 cp949 로 저장되므로 `encoding='utf-8'` 로 읽으면 깨진다. 스크립트가 직접 `write_text(..., encoding='utf-8')` 로 쓴 파일은 정상
 - `python-dotenv`의 `load_dotenv()`는 **스크립트 파일 위치**에서 위로 올라가며 `.env`를 찾는다. 저장소 밖 스크립트에서는 경로를 명시해야 함
 - `analyzer/test_map.py`는 `static_check.py`의 `EXCLUDE_DIRS`·`iter_python_files`를 import한다. 3절 구조가 공용 util 파일을 허용하지 않아 모듈 간 import로 처리함
 - `high_churn()`의 출력 키는 16.1이 정한 `commits_60d` 고정. `days` 인자를 바꿔 부르면 키 이름과 실제 창이 어긋남
