@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 9 완료 (AI 소스 검증 baseline: 유용률 68%, n=31). 다음은 PHASE 10 (FastAPI)**
+**Updated: 2026-09-16 (화) — PHASE 10·11 완료. 웹에서 URL 입력 → 진행 → 보고서까지 동작. 다음은 PHASE 12 (자기참조 데모)**
 
 ## Done
 
@@ -426,9 +426,81 @@ quotaValue : 20
 
 > `evaluation/` 은 3절 구조에 없는 디렉터리다. **PHASE 13 결과가 심사 폼 정식 근거.** 오늘 AI baseline 은 데모 저장소 선택 · 오탐 유형 파악용 내부 자료.
 
+### PHASE 10 — FastAPI 연결 (9/16)
+
+`app/db.py` 신규, `app/main.py` 확장, `analyze.py` 에 진행 콜백 추가. 22절 스펙대로.
+
+**엔드포인트 3개 실측 통과**
+
+| 요청 | 결과 |
+|---|---|
+| `POST /api/analyze` | `{"job_id": "ea43f66c..."}` |
+| `GET /api/jobs/{id}` | `{status, progress, repo_url, created_at, error?}` |
+| `GET /api/jobs/{id}/report` | `HANDOFF.md` 본문 (text/plain) |
+
+**`jobs` 테이블 1개.** 22절이 "복잡하게 만들지 않는다" 고 해서 컬럼 7개만 둠:
+`id / repo_url / status / progress / result_path / error / created_at`. 마이그레이션 도구 없이 `create_all`.
+
+**상태 9개** — 22절 목록 그대로. 실제 파이프라인 순서에 맞춰 발행:
+`queued → cloning(5) → extracting(15) → embedding(35) → judging(40) → static_analysis(88) → generating_report(95) → completed(100)`, 실패 시 `failed`.
+
+**파이프라인을 복제하지 않고 콜백을 넣었다.** `analyze.run(..., on_progress=fn)` 을 추가해
+워커가 단계마다 `jobs` 행을 갱신한다. 웹용 파이프라인을 따로 만들면 CLI 와 어긋난다.
+상태 문자열은 22절 이름을 그대로 쓰므로 워커는 받은 값을 그대로 DB 에 넣는다.
+
+**큐를 두지 않았다.** 1.4절 결정(Celery/Redis 제외) 대로 FastAPI `BackgroundTasks` + `jobs` 테이블로 처리.
+
+**`result_path` 만 저장한다.** `HANDOFF.md` 는 이미 `outputs/` 에 있으므로 본문을 DB 에 중복 저장하지 않는다.
+
+**실측 검증 (LLM 호출 0회, `skip_llm=true` 로 quota 미사용)**
+- 정상: cachecontrol → `completed` 100%, 보고서 76줄 수신
+- 잘못된 URL: `POST` 단계에서 **422** 로 거부. job 자체를 만들지 않는다
+  (초기 구현은 500 이었다. `CollectError` 가 `ValueError` 가 아니어서 pydantic 이 422 로 바꾸지 못함 → 검증기에서 `ValueError` 로 변환)
+- 없는 저장소: `failed` 상태 + `error` 에 `CollectError: git clone 실패 (exit 128)` 원문 보존
+- 진행 중 보고서 요청: **409** + `"아직 분석 중입니다. status=cloning, progress=5"` (빈 보고서를 주지 않는다)
+- 없는 job: **404**
+
+**캐시가 더워지면 앞 단계가 순식간에 지나간다.** clone·임베딩이 캐시면 `cloning`~`embedding` 이
+2초 폴링에 안 잡히고 `static_analysis` 부터 보인다. 버그가 아니다. PHASE 11 진행 화면에서
+SSE 로 바꾸면 모든 단계가 보인다.
+
+### PHASE 11 — 결과 화면 (9/16)
+
+23절 3화면 완성. Tailwind CDN + Jinja2 + SSE(`sse-starlette`). **빌드 스텝 없음.**
+
+| 화면 | 경로 | 내용 |
+|---|---|---|
+| Landing | `GET /` | 한 줄 설명("코드는 남지만, 이유는 남지 않습니다"), URL 입력, Analyze, 예제 저장소 3개 |
+| Progress | `GET /jobs/{id}` | SSE 로 6단계 진행 표시 + 진행 바 |
+| Report | `GET /jobs/{id}/report` | Before you touch this repo(주인공) / First week / High-change / Test gaps / Dead-code |
+
+추가 경로: `POST /analyze`(폼), `GET /jobs/{id}/download`(HANDOFF.md), `GET /api/jobs/{id}/stream`(SSE), `GET /health`.
+기존 `/` 의 헬스체크는 `/health` 로 옮겼다(랜딩이 `/` 를 차지).
+
+**`judge/report.py` 에 `gather_evidence()` 를 뺐다.** 마크다운(`build()`)과 웹 화면이 **같은 데이터**를 쓴다.
+두 곳에서 각자 계산하면 문서와 화면이 어긋난다. `first_week` 계산도 여기로 옮겼다.
+리팩터링 후 기존 `HANDOFF.md` 와 출력이 **바이트 단위로 동일**함을 회귀 확인.
+
+**23절 UX 원칙 준수**
+- 코드 품질 점수 없음. "위험"·"나쁜 코드" 표현 없음
+- Dead-code 는 "삭제를 권하는 것이 아니라 확인이 필요한 후보", Test gap 은 "테스트가 없다는 뜻은 아닙니다" 로 표기
+- finding 카드는 23절이 정한 네 가지를 모두 노출: 제목 / 물어볼 질문 / 코드에서 확인된 사실 / 근거(`파일:줄`)
+- Markdown 복사 버튼 + `HANDOFF.md` 내려받기
+
+**실측 검증 (LLM 호출 0회, `skip_llm` 사용)**
+- Landing: 한 줄 문구·Analyze·예제 3개 모두 렌더
+- 잘못된 URL 폼 제출 → **400 + 랜딩에 오류 메시지** (API 경로는 422 JSON, 폼은 화면으로 돌려준다)
+- 정상 제출 → **303** → Progress → 완료 후 Report 자동 이동
+- SSE 실측: `cloning(5) → extracting(15) → static_analysis(88) → completed(100) → done`
+- Report: 5개 섹션 + 복사/다운로드 버튼 렌더, 다운로드 76줄 수신
+
+**SSE 가 끊기면 폴링으로 내려앉는다.** 프록시 환경에서 스트림이 막히는 경우가 있어
+`onerror` 에서 2초 폴링으로 전환한다(PHASE 14 배포 대비).
+
 ## In Progress
 
-- PHASE 9 완료. AI 소스 검증 baseline 확보. **PHASE 13 (9/17~18) 에서 개발자 외부 검증 예정**
+- PHASE 10·11 완료. **브라우저에서 URL 을 넣으면 보고서까지 나온다.** 다음은 **PHASE 12 (자기참조 데모, 24절)**
+- PHASE 9 는 AI 소스 검증 baseline 까지. **정식 사람 평가는 PHASE 13 (9/17~18) 개발자 외부 검증**
 
 ## Next
 

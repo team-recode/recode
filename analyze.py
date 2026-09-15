@@ -34,10 +34,19 @@ def _done(started: float, detail: str = "") -> None:
 
 
 def run(url: str, threshold: float, model: str, skip_llm: bool,
-        limit: int = 0) -> Path:
+        limit: int = 0, on_progress=None) -> Path:
+    """분석 파이프라인 전체. `on_progress(status, percent)` 로 진행 상황을 흘려보낸다.
+
+    status 문자열은 22절이 정한 job 상태명을 그대로 쓴다. FastAPI 워커가 그대로 DB에 넣는다.
+    """
     total = 4 if skip_llm else 5
     wall = time.time()
 
+    def notify(status: str, percent: int) -> None:
+        if on_progress:
+            on_progress(status, percent)
+
+    notify("cloning", 5)
     started = _step(1, total, f"저장소 수집: {url}")
     meta = collect(url)
     clone_path = Path(meta["clone_path"])
@@ -49,9 +58,11 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # extract 는 embed 내부에서 호출된다. 함수 추출과 임베딩을 따로 돌리지 않는다.
+    notify("extracting", 15)
     started = _step(2, total, f"함수 추출 및 유사 후보 축소 (threshold {threshold})")
     pairs, kept, _ = embed_mod.build(clone_path, threshold=threshold)
     embed_sec = round(time.time() - started, 1)
+    notify("embedding", 35)
     (out_dir / "pairs.json").write_text(json.dumps(pairs, ensure_ascii=False, indent=2),
                                         encoding="utf-8")
     _done(started, f"함수 {len(kept)}개 -> 후보 {len(pairs)}쌍")
@@ -64,6 +75,7 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
         targets = pairs[:limit] if limit else pairs
         judged = len(targets)
         note = f", 전체 {len(pairs)}쌍 중 --limit" if limit and limit < len(pairs) else ""
+        notify("judging", 40)
         started = _step(3, total, f"LLM 판정 ({model}, 후보 {judged}쌍{note})")
         findings, stats = llm_mod.judge(clone_path, targets, model=model)
         llm_sec = round(time.time() - started, 1)
@@ -73,12 +85,14 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
                        f"폐기 {stats['dropped']} / 오류 {stats['error']} "
                        f"/ API {stats['api_calls']}회 · 캐시 {stats['cache_hits']}회")
 
+    notify("static_analysis", 88)
     step = total - 1
     started = _step(step, total, "정적 근거 수집 (High-Churn / Dead-Code / Test Gap)")
     text = report_mod.build(clone_path, findings)
     static_sec = round(time.time() - started, 1)
     _done(started)
 
+    notify("generating_report", 95)
     started = _step(total, total, "HANDOFF.md 생성")
     report_path = out_dir / "HANDOFF.md"
     report_path.write_text(text, encoding="utf-8")

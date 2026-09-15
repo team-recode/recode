@@ -1,7 +1,270 @@
-from fastapi import FastAPI
+"""PHASE 10 — FastAPI 연결(22절).
 
-app = FastAPI()
+최소 API 3개. `analyze.py` 파이프라인을 BackgroundTasks 로 감싼다.
+큐(Celery/Redis)는 두지 않는다 — 1.4절에서 FastAPI BackgroundTasks + jobs 테이블로 충분하다고 결정.
 
-@app.get("/")
-def root():
+    uvicorn app.main:app --reload
+"""
+
+import asyncio
+import json
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import (BackgroundTasks, Depends, FastAPI, Form, HTTPException,
+                     Request)
+from fastapi.responses import (FileResponse, HTMLResponse, PlainTextResponse,
+                               RedirectResponse)
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, field_validator
+from sqlalchemy.orm import Session
+from sse_starlette.sse import EventSourceResponse
+
+import analyze
+from analyzer.collect import CollectError, parse_repo_url
+from app import db
+from judge import embed as embed_mod
+from judge import llm as llm_mod
+from judge import report as report_mod
+
+templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+# 23절 Landing: 예제 저장소 2~3개. 이미 clone 되어 있어 데모에서 빨리 끝난다.
+EXAMPLES = [
+    {"name": "openvax/mhctools", "url": "https://github.com/openvax/mhctools",
+     "note": "바이오인포 래퍼. 같은 인터페이스를 여러 도구가 구현"},
+    {"name": "psf/cachecontrol", "url": "https://github.com/psf/cachecontrol",
+     "note": "소형 HTTP 캐시 라이브러리. 2분 이내"},
+    {"name": "psf/requests", "url": "https://github.com/psf/requests",
+     "note": "널리 쓰이는 HTTP 클라이언트"},
+]
+
+# 23절 Progress 화면 문구. db 상태값 순서와 1:1 로 맞춘다.
+STEP_LABELS = [
+    (db.STATUS_CLONING, "저장소를 내려받는 중"),
+    (db.STATUS_EXTRACTING, "함수를 추출하는 중"),
+    (db.STATUS_EMBEDDING, "비슷한 로직을 찾는 중"),
+    (db.STATUS_JUDGING, "확인할 질문을 만드는 중"),
+    (db.STATUS_STATIC_ANALYSIS, "자주 바뀐 영역을 찾는 중"),
+    (db.STATUS_GENERATING_REPORT, "인수인계 문서를 쓰는 중"),
+]
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    db.init_db()
+    yield
+
+
+app = FastAPI(title="Re:Code", description="낯선 저장소 인수인계 분석기",
+              lifespan=lifespan)
+
+
+def get_session():
+    with db.SessionLocal() as session:
+        yield session
+
+
+class AnalyzeRequest(BaseModel):
+    repo_url: str
+    # 무료 티어 quota 대비 옵션. CLI 와 같은 의미다.
+    skip_llm: bool = False
+    limit: int = 0
+
+    @field_validator("repo_url")
+    @classmethod
+    def _check_url(cls, value: str) -> str:
+        # 잘못된 URL 로 job 을 만들어두고 백그라운드에서 실패시키지 않는다.
+        try:
+            parse_repo_url(value)
+        except CollectError as exc:
+            # pydantic 은 ValueError 만 422 로 바꾼다. 그대로 두면 500 이 난다.
+            raise ValueError(str(exc)) from exc
+        return value.strip()
+
+
+def _run_job(job_id: str, repo_url: str, skip_llm: bool, limit: int) -> None:
+    """BackgroundTasks 워커. 단계마다 jobs 행을 갱신한다."""
+    def on_progress(status: str, percent: int) -> None:
+        with db.SessionLocal() as session:
+            job = session.get(db.Job, job_id)
+            if job:
+                job.status, job.progress = status, percent
+                session.commit()
+
+    try:
+        report_path = analyze.run(
+            repo_url,
+            threshold=embed_mod.DEFAULT_THRESHOLD,
+            model=llm_mod.DEFAULT_MODEL,
+            skip_llm=skip_llm,
+            limit=limit,
+            on_progress=on_progress,
+        )
+        result, error, status = str(report_path), None, db.STATUS_COMPLETED
+    except Exception as exc:                          # noqa: BLE001 — 원인을 그대로 남긴다
+        result, error, status = None, f"{type(exc).__name__}: {exc}", db.STATUS_FAILED
+        print(f"[job {job_id}] 실패: {error}", file=sys.stderr)
+
+    with db.SessionLocal() as session:
+        job = session.get(db.Job, job_id)
+        if job:
+            job.status = status
+            job.progress = 100 if status == db.STATUS_COMPLETED else job.progress
+            job.result_path, job.error = result, error
+            session.commit()
+
+
+@app.get("/health")
+def health() -> dict:
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------- 화면 (23절)
+
+@app.get("/", response_class=HTMLResponse)
+def landing(request: Request):
+    return templates.TemplateResponse(request, "landing.html", {"examples": EXAMPLES})
+
+
+@app.post("/analyze")
+def submit(request: Request, tasks: BackgroundTasks, repo_url: str = Form(...),
+           skip_llm: str = Form(default=""), session: Session = Depends(get_session)):
+    try:
+        parse_repo_url(repo_url)
+    except CollectError as exc:
+        # 폼 제출은 422 JSON 대신 랜딩 화면에 메시지를 돌려준다.
+        return templates.TemplateResponse(
+            request, "landing.html",
+            {"examples": EXAMPLES, "error": str(exc).splitlines()[0]}, status_code=400)
+
+    job_id = _create_job(session, tasks, repo_url.strip(), bool(skip_llm), 0)
+    return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+
+@app.get("/jobs/{job_id}", response_class=HTMLResponse)
+def progress_page(request: Request, job_id: str, session: Session = Depends(get_session)):
+    job = _load(job_id, session)
+    if job.status == db.STATUS_COMPLETED:
+        return RedirectResponse(f"/jobs/{job_id}/report", status_code=303)
+
+    return templates.TemplateResponse(request, "progress.html", {
+        "job": job.as_status(),
+        "steps": STEP_LABELS,
+        "order": [key for key, _ in STEP_LABELS],
+    })
+
+
+@app.get("/jobs/{job_id}/report", response_class=HTMLResponse)
+def report_page(request: Request, job_id: str, session: Session = Depends(get_session)):
+    job = _load(job_id, session)
+    if job.status != db.STATUS_COMPLETED:
+        return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+    path = Path(job.result_path or "")
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="보고서 파일이 없습니다. 다시 분석하세요.")
+
+    # 화면과 마크다운이 같은 근거를 쓰도록 gather_evidence 를 공유한다.
+    clone_path = Path("repos") / path.parent.name
+    findings_path = path.parent / "findings.json"
+    findings = (json.loads(findings_path.read_text(encoding="utf-8"))
+                if findings_path.is_file() else [])
+    data = report_mod.gather_evidence(clone_path, findings)
+
+    return templates.TemplateResponse(request, "report.html", {
+        "d": data,
+        "job_id": job_id,
+        "markdown": path.read_text(encoding="utf-8"),
+        # 상단에 이미 나온 파일은 아래 표에서 뺀다(19절 근거 중복 금지).
+        "touched": [row["file"] for row in data["before_you_touch"]],
+    })
+
+
+@app.get("/jobs/{job_id}/download")
+def download(job_id: str, session: Session = Depends(get_session)):
+    job = _load(job_id, session)
+    path = Path(job.result_path or "")
+    if job.status != db.STATUS_COMPLETED or not path.is_file():
+        raise HTTPException(status_code=409, detail="아직 내려받을 보고서가 없습니다.")
+    return FileResponse(path, media_type="text/markdown", filename="HANDOFF.md")
+
+
+def _create_job(session: Session, tasks: BackgroundTasks, repo_url: str,
+                skip_llm: bool, limit: int) -> str:
+    """API 와 폼 제출이 같은 경로로 job 을 만든다."""
+    job = db.Job(id=db.new_job_id(), repo_url=repo_url,
+                 status=db.STATUS_QUEUED, progress=0)
+    session.add(job)
+    session.commit()
+    tasks.add_task(_run_job, job.id, repo_url, skip_llm, limit)
+    return job.id
+
+
+@app.post("/api/analyze")
+def create_analysis(req: AnalyzeRequest, tasks: BackgroundTasks,
+                    session: Session = Depends(get_session)) -> dict:
+    return {"job_id": _create_job(session, tasks, req.repo_url, req.skip_llm, req.limit)}
+
+
+@app.get("/api/jobs/{job_id}/stream")
+async def stream(job_id: str):
+    """23절 Progress 화면용 SSE. 상태가 바뀔 때만 이벤트를 보낸다."""
+
+    async def events():
+        last = None
+        while True:
+            with db.SessionLocal() as session:
+                job = session.get(db.Job, job_id)
+                if job is None:
+                    yield {"event": "done",
+                           "data": json.dumps({"status": "failed",
+                                               "error": "job_id 를 찾을 수 없습니다."})}
+                    return
+                snapshot = (job.status, job.progress, job.error)
+
+            status, progress, error = snapshot
+            if snapshot != last:
+                last = snapshot
+                yield {"event": "progress",
+                       "data": json.dumps({"status": status, "progress": progress})}
+
+            if status in (db.STATUS_COMPLETED, db.STATUS_FAILED):
+                yield {"event": "done",
+                       "data": json.dumps({"status": status, "error": error})}
+                return
+
+            await asyncio.sleep(1)
+
+    return EventSourceResponse(events())
+
+
+def _load(job_id: str, session: Session) -> db.Job:
+    job = session.get(db.Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job_id 를 찾을 수 없습니다.")
+    return job
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str, session: Session = Depends(get_session)) -> dict:
+    return _load(job_id, session).as_status()
+
+
+@app.get("/api/jobs/{job_id}/report", response_class=PlainTextResponse)
+def get_report(job_id: str, session: Session = Depends(get_session)) -> str:
+    job = _load(job_id, session)
+
+    if job.status == db.STATUS_FAILED:
+        raise HTTPException(status_code=409, detail=job.error or "분석에 실패했습니다.")
+    if job.status != db.STATUS_COMPLETED:
+        # 아직 도는 중이면 진행 상황을 알려준다. 빈 보고서를 주지 않는다.
+        raise HTTPException(status_code=409,
+                            detail=f"아직 분석 중입니다. status={job.status}, "
+                                   f"progress={job.progress}")
+
+    path = Path(job.result_path or "")
+    if not path.is_file():
+        raise HTTPException(status_code=410, detail="보고서 파일이 없습니다. 다시 분석하세요.")
+    return path.read_text(encoding="utf-8")
