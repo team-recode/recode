@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 3 완료**
+**Updated: 2026-09-15 (월) — PHASE 3·5 완료**
 
 ## Done
 
@@ -186,19 +186,59 @@ psf/requests(0/3, 1/3)와 극명한 대조. 응답 요약도 정확:
 `judge/extract.py` 가 같은 계산(파일별 커밋 수)을 필요로 해 복제 대신 재사용했다.
 호출부 1곳 포함 2줄 변경. `test_evidence_gap` 회귀 확인 완료(psf/requests 22개 파일 동일).
 
+### PHASE 5 — 임베딩 기반 후보 축소 (9/15)
+
+`judge/embed.py` 구현. 17절 스펙. 임베딩은 원안의 OpenAI 대신 **로컬 `sentence-transformers`**(`all-MiniLM-L6-v2`, 약 90MB, API 호출·과금 없음).
+
+**threshold = 0.80 확정.** 17절 지시("고정하지 않고 저장소 2~3개를 돌려보며 정한다")대로 세 저장소 실측:
+
+| threshold | requests(148) | mhctools(437) | django(679) |
+|---|---|---|---|
+| 0.70 | 93 | 1091 | 679 |
+| 0.75 | 53 | 532 | 295 |
+| **0.80** | 32 | 245 | 116 |
+| 0.85 | 12 | 137 | 50 |
+| 0.90 | 5 | 71 | 16 |
+
+**단일 threshold 로는 세 저장소를 모두 목표 구간(수십~100)에 넣을 수 없다.** 그래서 threshold 는
+품질 하한으로만 쓰고, 실제 개수 제한은 `MAX_PAIRS=100` 이 한다. 최종 결과: **requests 35 / mhctools 100 / django 100**.
+
+- 임베딩 캐시: `cache/embeddings/{repo}_{sha12}_{model}.npz`. 같은 commit SHA면 재계산하지 않는다(17절).
+  함수 목록이 캐시와 어긋나면 자동으로 다시 계산한다
+- cosine 은 numpy 내적(벡터를 정규화해 저장). 전수 LLM 비교 없음
+
+**후보 선별에서 발견한 것 — 유사도 내림차순 정렬은 이 제품에 틀린 전략이다.**
+
+처음 구현은 PHASE 1 이 검증한 3쌍을 **하나도 후보에 넣지 못했다.** 원인 셋을 실측으로 잡아 고침:
+
+| 결함 | 증상 | 수정 |
+|---|---|---|
+| 최상위 문장만 세는 길이 필터 | `eramer._check_peptides` 는 **976자인데 for 루프 하나**라 "1문장"으로 잡혀 제거됨. `MIN_BODY_STATEMENTS=2` 가 실제 후보를 통째로 날림 | 문장을 `ast.walk` 로 중첩까지 센다. 하한은 1로 낮추고 실질 차단은 `MIN_SOURCE_CHARS=80` 이 한다 |
+| 완전 동일 복사본이 상위 독식 | 유사도 1.000 쌍이 최상위. ①②는 **차이**를 묻는 기능이라 물어볼 게 없음 | 정규화 후 동일하면 제외 + `MAX_SIMILARITY=0.97` 상한 |
+| 한 함수가 후보를 독식 | `predict_dataframe` 한 무리가 100개를 다 채움. 후보 유사도 범위가 0.915~0.969 로 좁음 | `MAX_PER_FUNCTION=1` — `scripts/make_samples.py` 에서 이미 쓴 다양성 제한과 같은 방식 |
+
+수정 후 **T1(`base_predictor` ↔ `mhcflurry` 의 `predict_with_flanks`)이 #39(0.906)로 복귀**,
+후보 유사도 범위도 0.807~0.969 로 넓어짐.
+
+**남은 한계(의도적 수용)**: `MAX_PER_FUNCTION=1` 때문에 PHASE 1 의 T2·T3 와 **정확히 같은 조합**은 안 나온다
+(`calis` 가 더 유사한 `caphla` 와 먼저 짝지어짐). 다만 `_check_peptides` 계열이 4쌍 올라오므로
+다음 개발자가 받는 질문("파일마다 `_check_peptides` 구현이 다른데 의도된 것인가")은 동일하다.
+CASES 는 리콜 측정용으로 사람이 고른 것이지 embed 의 출력 명세가 아니다.
+
 ## In Progress
 
-- PHASE 3 완료. PHASE 4는 이미 완료 상태이므로 다음은 **PHASE 5(`judge/embed.py`)**
+- PHASE 5 완료. 다음은 **PHASE 6(`judge/llm.py`)**
 
 ## Next
 
-**PHASE 5 — `judge/embed.py`** (계획서 17절)
+**PHASE 6 — `judge/llm.py`** (계획서 18절)
 
-`sentence-transformers` 로 함수 임베딩 → 유사 함수 후보 축소. 착수 전 아래 둘을 먼저 처리:
-1. **venv 에 `sentence-transformers` 설치 확인** (아래 Known Problems 참조 — 개발자별로 상태가 다름)
-2. 17절의 threshold·후보 필터 재확인
+PHASE 5 후보를 LLM에 넘겨 판정. 18절 출력 스키마 · 강제 규칙 · API 실패 대응(timeout, retry 1~2회, 실패 후보는 건너뛰고 계속).
 
-> 설계 주의: 아래 "설계에 반영해야 할 발견"의 **코드 유사도 ≠ 의미 유사도** 항목이 PHASE 5의 핵심 함정이다.
+- 프롬프트는 `scripts/make_samples.py` 의 `PROMPT_HEAD` 가 PHASE 1 에서 검증된 원본이다. 그대로 출발점으로 쓸 것
+- 모델은 `gemini-3-flash-preview` (2차 사이클에서 CASES 6/6 통과). quota 소진 시 CLI 인자로 교체
+- **PHASE 1 에서 확인된 프롬프트 약점**: 응답의 `evidence[].line` 이 예시값 `0` 그대로 돌아옴. 18절 스키마가 line 을 요구하므로 여기서 고칠 것
+- **설계 주의**: 함수 두 개만 잘라 던지면 오탐이 난다(아래 "설계에 반영해야 할 발견" 1번). 호출 경로/정규화 지점을 함께 줄지 검토
 
 **부수 작업**:
 - 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
