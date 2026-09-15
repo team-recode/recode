@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-15 (월) — PHASE 3·5·6 완료**
+**Updated: 2026-09-15 (월) — PHASE 3·5·6·7 완료, 파이프라인 연결됨**
 
 ## Done
 
@@ -265,19 +265,54 @@ Re:Code 는 코드 품질 검사기가 아니므로 프롬프트에 규칙 2개�
 처음엔 `scripts/run_validation` 에서 import 했으나 **제품 코드가 검증 도구에 의존하는 역방향**이라 되돌렸다.
 `scripts/` 쪽 프롬프트(`PROMPT_HEAD`)는 PHASE 1 재현용으로 원본을 유지하므로 `judge/llm.py` 의 것과 **의도적으로 다르다**(18절 규칙 6~10 추가분).
 
+### PHASE 7 — HANDOFF.md 생성 (9/15)
+
+`judge/report.py` 구현. 19절 문서 구조 7개 섹션. `analyzer/`(③④⑥) + `judge/llm.py`(①②) 를 합친다.
+
+**19절 출력 원칙 구현 상태**
+
+| 원칙 | 구현 |
+|---|---|
+| 결과 0건인 섹션은 숨긴다 | 실측 확인 — psf/requests 는 60일 churn 0건 + finding 0건이라 **섹션 1·5·6·7 만 출력**(4개), mhctools 는 7개 전부 |
+| 모든 finding 에 Evidence | finding 은 PHASE 6 에서 evidence 검증을 통과한 것만 들어온다. 각 질문 아래 `파일:줄` 로 표기 |
+| 경고 개수를 부풀리지 않는다 | 섹션당 최대 10행 + "그 외 N개". 아래 테스트 파일 제외 조치도 이 원칙 때문 |
+| 같은 근거를 여러 섹션에서 중복 출력하지 않는다 | 섹션 2에 나온 파일은 섹션 4·5 목록에서 제외 |
+| 질문은 최대 5~10개 | `MAX_QUESTIONS = 10` |
+| 첫 주 할 일은 최대 3개 | `MAX_FIRST_WEEK = 3`, 19절 우선순위 순서(high-churn+test gap → consistency → dead-code) |
+
+**PHASE 6 에서 넘긴 "의미 중복 질문" 해결.** 같은 함수 쌍에 대한 finding 을 묶어 대표 1건만 보여주고
+나머지는 `"같은 패턴이 2곳에서 더 보인다"` 로 덧붙인다. mhctools 실측에서 기본 `mode` 차이 3건이 1건으로 합쳐졌다.
+사실을 숨기지 않으면서 개수는 부풀리지 않는다.
+
+**리포트 계층에서 테스트 파일을 제외.** `analyzer/` 는 16절대로 테스트를 포함해 모든 근거를 낸다(그대로 유지).
+다만 인수인계 문서가 물어볼 대상은 앞으로 고칠 production 코드다. 거르기 전에는
+dead-code 상위 10건 중 9건이 `tests/` 의 미사용 변수였고 "그 외 45개"로 표시됐다.
+거른 뒤에는 `_predict_protein_flank_length`·`VALID_CLASS_I_METHODS` 같은 실제 확인 대상이 올라오고 "그 외 19개" 로 줄었다.
+
+**섹션 번호는 19절 고정값을 유지한다.** 0건 섹션을 숨기면 번호가 `1 → 5 → 6 → 7` 처럼 건너뛴다.
+저장소가 달라도 "## 5 는 항상 Test evidence gaps" 가 유지되도록 일부러 재번호를 매기지 않았다.
+보기 문제라고 판단되면 재번호로 바꿀 수 있다.
+
 ## In Progress
 
-- PHASE 6 완료. 다음은 **PHASE 7(`judge/report.py`)**
+- PHASE 7 완료. **①②③④⑥ 전체 파이프라인이 CLI 로 연결됨.** 다음은 **PHASE 8(CLI MVP 완성)**
 
 ## Next
 
-**PHASE 7 — `judge/report.py`** (계획서 19절)
+**PHASE 8 — CLI MVP 완성** (계획서 20절)
 
-`HANDOFF.md` 생성. 19절의 문서 구조(1. Repository overview ~ 7. First week)와 출력 원칙.
+현재는 단계별 CLI 를 손으로 이어 붙여야 한다. 20절대로 한 번에 도는 진입점을 만든다.
 
-- 입력은 `analyzer/`(③④⑥ evidence) + `judge/llm.py`(①② finding) 양쪽을 합친 것
-- 16.2 / 16.3 이 지정한 문구(`"정적 호출 경로에서 사용 근거를 찾지 못했습니다."` 등)가 이미 데이터에 들어 있으므로 report 에서 다시 만들지 말 것
-- **아래 "PHASE 7 에서 처리할 것" 항목 먼저 확인**
+현재 전체 파이프라인 (mhctools 기준 실행 순서):
+```powershell
+py -m analyzer.collect https://github.com/openvax/mhctools
+py -m judge.embed repos/openvax__mhctools --threshold=0.80 --json=cache/mhctools_pairs.json
+py -m judge.llm repos/openvax__mhctools cache/mhctools_pairs.json --json=cache/mhctools_findings.json
+py -m judge.report repos/openvax__mhctools cache/mhctools_findings.json --out=HANDOFF.md
+```
+
+- 20절의 "이 단계 완료 전 금지" 항목을 먼저 확인할 것
+- `judge/embed.py` 가 내부에서 `judge/extract.py` 를 부르므로 extract 는 따로 실행할 필요 없음
 
 **부수 작업**:
 - 남은 sample 14건은 quota 회복되는 대로 재실행 (판정에는 필수 아님, 정밀도 재확인용). CLI 인자로 `gemini-3-flash-preview` 지정
@@ -286,14 +321,6 @@ Re:Code 는 코드 품질 검사기가 아니므로 프롬프트에 규칙 2개�
 
 > `analyzer/`(③④⑥) + `judge/`(①②) 가 이제 함께 살아있는 상태. PHASE 3~7 순서대로 진행.
 
-## PHASE 7 에서 처리할 것
-
-- **의미가 같은 질문이 중복된다.** 18절의 "동일한 질문 중복 제거"를 텍스트 완전일치로 구현했는데,
-  mhctools 실측에서 finding 5건 중 **3건이 같은 주제**였다(기본 `mode` 설정 차이를 파일 쌍만 바꿔 3번:
-  `netmhc_pan4`↔`netmhc_pan42`, `netmhc_pan41`↔`netmhc_pan42`, `netmhcii_pan`↔`netmhc_pan41`).
-  문장이 다르므로 텍스트 비교로는 안 걸린다. HANDOFF 문서에서 **주제별로 묶어** 한 항목으로 보여주거나,
-  같은 함수명이 반복되는 finding 을 그룹핑할 것
-- **`test_map` 의 facade false negative** 를 report 에서 명시할 것 (아래 "설계에 반영해야 할 발견" 참조)
 
 ## 설계에 반영해야 할 발견
 
