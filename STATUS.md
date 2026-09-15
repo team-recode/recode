@@ -474,8 +474,111 @@ quotaValue : 20
 **PHASE 16 진입 시 다음 사람이 할 것**:
 1. `py analyze.py https://github.com/openvax/mhctools --model=gemini-3-flash-preview --limit=20` (LLM 캐시 있어 quota 부담 낮음)
 2. `outputs/openvax__mhctools/HANDOFF.md` 열어 finding 목록 확인
-3. 위 강한 finding 3개가 실제로 리포트에 있는지 확인 (없으면 fallback 결정)
-4. 28절 데모 순서(URL 입력 → 실시간 분석 → 결과 → 질문 → First week → 자기참조)에 스크립트 매핑
+3. 아래 데모 스크립트의 강한 finding 3개가 실제 리포트에 있는지 확인 (없으면 fallback 결정)
+4. 아래 스크립트 그대로 활용하거나 finding 위치·행 번호만 실측치로 갱신
+
+### PHASE 16 데모 스크립트 초안 (2026-09-16 작성, 28절 6단계 매핑)
+
+**총 시간 목표: 2~3분** (28절 원문). 시연은 라이브(실제 브라우저) 권장 — 화면 캡처보다 신뢰도 높음.
+
+#### 시나리오 A — mhctools (primary)
+
+**1. GitHub URL 입력**
+```
+https://github.com/openvax/mhctools
+```
+> "면역학 도메인의 MHC 예측 도구입니다. 심사위원 대부분이 처음 보는 저장소일 겁니다 — 이게 요점입니다."
+
+**2. 실시간 분석** (SSE 로그 표시)
+```
+[1/5] Repository cloning...        openvax/mhctools (611 commits, ~2초)
+[2/5] Extracting functions...      1,814 -> 631 filtered -> 100 candidates
+[3/5] LLM judging...               11 pairs (finding 7 / skip 3 / error 1)
+[4/5] Static evidence...           High-Churn 20 + Test gap 21
+[5/5] Generating HANDOFF.md        7 sections
+```
+> "정적 근거는 즉시, LLM 판정은 후보 100쌍 중 표본 11쌍(quota 상한)입니다."
+
+**3. 결과 — 첫 finding**
+> **"BigMHC 서브클래스가 `mhc_class='I'` 로 하드코딩되어 있습니다."**
+>
+> 근거:
+> - `mhctools/bigmhc.py:157` — `kind_support()` 가 `mhc_dependence='single_allele'`, `mhc_class='I'` 반환 (고정값)
+> - `mhctools/wrapper_base.py:73` — 부모 클래스는 `self.mhc_class` 인스턴스 속성 사용
+
+**4. 질문** (원저자에게 물어볼 형태)
+> **"BigMHC 구현에서 `mhc_class='I'` 를 고정한 것이 의도된 제약(MHC-I 전용)인가요, 아니면 MHC class II 지원이 아직 미구현인가요?"**
+>
+> "이 도구는 잘못됐다고 말하지 않습니다. 원저자만 답할 수 있는 걸 원저자에게 물어볼 형태로 만듭니다."
+
+**5. First week**
+> **"변경이 잦고(`mhctools/__init__.py` 최근 60일 22회, 최상위) 테스트 근거가 부족한 예측기 등록 로직에 regression test 부터 추가하세요."**
+>
+> "새 predictor 추가마다 `__init__.py` 가 함께 바뀌는 패턴이 있어 회귀 위험이 큽니다."
+
+**6. 자기참조 결과**
+> "저희도 2주간 AI로 만들었습니다. **저희 자신의 저장소에도 Re:Code 를 돌린 결과를 함께 제출합니다.**"
+>
+> (Re:Code → Re:Code 인수인계서 링크 클릭 → 첫 finding 노출)
+
+**mhctools 를 primary 로 쓰는 이유** (28절 조건 대조):
+- ✅ 유사 로직 + 의미 있는 차이 (BigMHC override, predict_with_flanks override)
+- ✅ high churn (`__init__.py` 60일 22회)
+- ✅ test evidence gap (facade 패턴으로 21건 미연결)
+- ✅ dead code (39건)
+- 조건 2개 이상 통과 요건 초과 달성 (4개 통과)
+
+#### 시나리오 B — cachecontrol (backup)
+
+**시간 부족 · mhctools 준비 실패 시 대안.** 저장소가 작아 데모 전체 2분 이내 가능. finding [02] 단일로 강한 인상.
+
+**1. GitHub URL 입력**
+```
+https://github.com/psf/cachecontrol
+```
+> "HTTP 캐시 미들웨어입니다. 소규모지만 실서비스에서 널리 쓰입니다."
+
+**2. 실시간 분석**
+```
+[1/5] Repository cloning...        psf/cachecontrol (~1초)
+[2/5] Extracting functions...      232 -> 67 filtered -> 9 candidates
+[3/5] LLM judging...               9 pairs (finding 3 / skip 6)
+[4/5] Static evidence collection...
+[5/5] Generating HANDOFF.md        4~5 sections
+```
+> "전수 9쌍 판정, 전부 완주."
+
+**3. 결과 — 첫 finding (잠재 버그 강도)**
+> **"같은 클래스 안에서 캐시 URL 처리 방식이 불일치합니다."**
+>
+> 근거:
+> - `cachecontrol/controller.py:152` — `_load_from_cache` 가 `request.url` 을 raw 로 사용
+> - `cachecontrol/controller.py:175` — `cached_request` 는 같은 클래스에서 `self.cache_url()` 로 정규화
+
+**4. 질문**
+> **"`_load_from_cache` 가 URL 정규화 없이 `request.url` 을 직접 캐시 키로 쓰는 것이 의도된 것인지, 아니면 `cached_request` 와 마찬가지로 `self.cache_url()` 정규화를 거쳐야 하는지 확인 부탁드립니다."**
+>
+> "후자라면 캐시 쓰기/읽기 mismatch 로 캐시 미스가 조용히 발생할 수 있습니다."
+
+**5. First week**
+> **"먼저 위 URL 정규화 지점을 확인하세요. `cached_request` · `_cache_set` 는 모두 정규화를 거치지만 `_load_from_cache` 만 raw URL 을 씁니다. 원저자 확인 후 실측 캐시 히트율을 로그로 재보세요."**
+
+**6. 자기참조 결과**: 시나리오 A 와 동일
+
+#### 촬영 · 시연 시 주의
+
+- **라이브 시연 권장** (녹화 재생보다 신뢰도 ↑). quota 있으면 캐시 히트로 실행 시간 짧아짐
+- **분석 화면**: SSE 로그가 실시간으로 흐르는 순간 강조 (진행률 아니라 로그 내용 보이게)
+- **결과 화면**: HANDOFF.md 의 "물어볼 질문" 섹션 확대. 근거 파일:줄 표시가 클릭 가능하면 GitHub 링크로 이동 데모까지
+- **BGM 없이 나레이션만**. 심사위원이 finding 을 실제로 읽을 시간 확보
+- **하지 말 것**: "정확도 N%" 주장 (21절 정확도 과장 금지 원칙). "저희 도구는 이런 걸 발견합니다" 정도의 서술
+
+#### PHASE 16 진입 전 확인 사항 (실측 필요)
+
+- [ ] mhctools finding [02] BigMHC kind_support 가 실제 리포트에 있는지 확인 (없으면 다른 강한 finding 으로 대체)
+- [ ] mhctools `__init__.py` High-Churn 22회가 최신 실측치인지 확인 (`py -m analyzer.static_check repos/openvax__mhctools`)
+- [ ] cachecontrol finding [02] 가 실제 리포트에 있는지 확인
+- [ ] 시연 URL 확정 (Railway or Render, PHASE 14 결정 후)
 
 **부수 작업 (판정에 필수 아님)**:
 - mhctools 표본 11 → 20 보강: quota 리셋 후
