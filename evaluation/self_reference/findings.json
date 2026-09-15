@@ -1,0 +1,117 @@
+[
+  {
+    "keep": true,
+    "category": "similar_logic_difference",
+    "summary": "두 CLI 진입점 함수에서 예외 발생 시 출력하는 에러 메시지의 표현 방식이 다름",
+    "why_clarify": "analyzer/collect.py의 main 함수에서는 예외 발생 시 \"수집 실패: {exc}\"로 출력하는 반면, analyzer/static_check.py의 main 함수에서는 \"정적 분석 실패: {exc}\"로 출력합니다.",
+    "question": "두 진입점에서 예외 발생 시 출력하는 접두사 메시지를 다르게 설정한 이유가 무엇입니까?",
+    "evidence": [
+      {
+        "file": "analyzer/collect.py",
+        "line": 102
+      },
+      {
+        "file": "analyzer/static_check.py",
+        "line": 146
+      }
+    ],
+    "confidence": 0.9,
+    "pair": {
+      "a": "analyzer/collect.py:main",
+      "b": "analyzer/static_check.py:main",
+      "similarity": 0.9497
+    }
+  },
+  {
+    "keep": true,
+    "category": "similar_logic_difference",
+    "summary": "동일한 목적의 클라이언트 생성 함수에서 예외 처리 방식과 임포트 위치의 차이",
+    "why_clarify": "함수 A(scripts/run_validation.py)는 SystemExit을 발생시키고 모듈 상단에서 genai를 임포트하는 반면, 함수 B(judge/llm.py)는 CollectError를 발생시키고 함수 내부에서 genai를 임포트합니다.",
+    "question": "두 클라이언트 생성 함수에서 API 키가 없을 때 발생하는 예외 타입과 genai 임포트 위치를 다르게 설계한 이유가 무엇인가요?",
+    "evidence": [
+      {
+        "file": "scripts/run_validation.py",
+        "line": 60
+      },
+      {
+        "file": "judge/llm.py",
+        "line": 161
+      }
+    ],
+    "confidence": 0.9,
+    "pair": {
+      "a": "scripts/run_validation.py:make_client",
+      "b": "judge/llm.py:make_client",
+      "similarity": 0.929
+    }
+  },
+  {
+    "keep": true,
+    "category": "similar_logic_difference",
+    "summary": "두 함수 간 테스트 파일 판별 조건과 처리 범위의 차이",
+    "why_clarify": "judge/extract.py의 is_test_file은 rel.name == \"conftest.py\"와 \"tests/\" 경로를 판별하며 setup.py를 포함하지 않지만, scripts/make_samples.py의 is_test_file은 rel.name in (\"setup.py\", \"conftest.py\")를 포함하고 경로 검사 조건에서 차이가 있습니다.",
+    "question": "두 함수에서 테스트 파일과 제외 대상을 판별하는 조건이 서로 다른 이유는 무엇인가요?",
+    "evidence": [
+      {
+        "file": "judge/extract.py",
+        "line": 34
+      },
+      {
+        "file": "scripts/make_samples.py",
+        "line": 65
+      }
+    ],
+    "confidence": 0.9,
+    "pair": {
+      "a": "judge/extract.py:is_test_file",
+      "b": "scripts/make_samples.py:is_test_file",
+      "similarity": 0.9106
+    }
+  },
+  {
+    "keep": true,
+    "category": "similar_logic_difference",
+    "summary": "완료되지 않은 작업 처리 방식의 차이",
+    "why_clarify": "report_page 함수는 작업이 완료되지 않은 경우 RedirectResponse를 반환하지만, get_report 함수는 409 HTTPException을 발생시킵니다.",
+    "question": "왜 작업이 완료되지 않았을 때 report_page는 리다이렉트하고 get_report는 예외를 발생시키는지 궁금합니다.",
+    "evidence": [
+      {
+        "file": "app/main.py",
+        "line": 256
+      },
+      {
+        "file": "app/main.py",
+        "line": 261
+      }
+    ],
+    "confidence": 0.9,
+    "pair": {
+      "a": "app/main.py:report_page",
+      "b": "app/main.py:get_report",
+      "similarity": 0.8435
+    }
+  },
+  {
+    "keep": true,
+    "category": "similar_logic_difference",
+    "summary": "독스트링 제거를 위한 정규표현식 패턴 범위의 차이",
+    "why_clarify": "_normalize 함수는 큰따옴표와 작은따옴표 삼중 따옴표를 모두 처리하는 반면, normalize 함수는 큰따옴표 삼중 따옴표만 처리하도록 구현되어 있습니다.",
+    "question": "독스트링 제거 시 _normalize 함수는 작은따옴표 삼중 따옴표도 처리하는데 normalize 함수는 큰따옴표 삼중 따옴표만 처리하도록 의도하신 이유가 있나요?",
+    "evidence": [
+      {
+        "file": "judge/embed.py",
+        "line": 57
+      },
+      {
+        "file": "scripts/make_samples.py",
+        "line": 70
+      }
+    ],
+    "confidence": 0.85,
+    "pair": {
+      "a": "judge/embed.py:_normalize",
+      "b": "scripts/make_samples.py:normalize",
+      "similarity": 0.9364
+    }
+  }
+]
