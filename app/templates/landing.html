@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Re:Code{% endblock %}
+
+{% block content %}
+<section class="text-center py-10">
+  <h1 class="text-4xl font-bold tracking-tight text-slate-900">
+    코드는 남지만, 이유는 남지 않습니다.
+  </h1>
+  <p class="mt-4 text-slate-600 leading-relaxed">
+    Re:Code는 낯선 저장소를 넘겨받은 개발자가<br class="hidden sm:block">
+    <strong class="text-slate-800">코드를 수정하기 전에 확인해야 할 것</strong>을 찾아줍니다.
+  </p>
+</section>
+
+<form method="post" action="/analyze" class="mt-4">
+  <div class="flex flex-col sm:flex-row gap-3">
+    <input
+      type="url" name="repo_url" id="repo_url" required
+      placeholder="https://github.com/owner/repo"
+      class="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm
+             focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent">
+    <button type="submit"
+      class="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white
+             hover:bg-slate-700 transition-colors">
+      Analyze
+    </button>
+  </div>
+
+  {% if error %}
+  <p class="mt-3 text-sm text-red-600">{{ error }}</p>
+  {% endif %}
+
+  <label class="mt-3 flex items-center gap-2 text-sm text-slate-600">
+    <input type="checkbox" name="skip_llm" value="1" class="rounded border-slate-300">
+    AI 판정 없이 정적 근거만 분석 (빠르고, API 사용량 없음)
+  </label>
+</form>
+
+<section class="mt-10">
+  <h2 class="text-sm font-medium text-slate-500">예제 저장소</h2>
+  <div class="mt-3 grid gap-3 sm:grid-cols-3">
+    {% for ex in examples %}
+    <button type="submit" form="example-{{ loop.index }}"
+      class="text-left rounded-lg border border-slate-200 bg-white p-4
+             hover:border-slate-400 transition-colors">
+      <div class="font-medium text-slate-900">{{ ex.name }}</div>
+      <div class="mt-1 text-xs text-slate-500">{{ ex.note }}</div>
+    </button>
+    <form id="example-{{ loop.index }}" method="post" action="/analyze" class="hidden">
+      <input type="hidden" name="repo_url" value="{{ ex.url }}">
+    </form>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="mt-10 rounded-lg border border-slate-200 bg-white p-5">
+  <h2 class="text-sm font-medium text-slate-500">분석하는 것</h2>
+  <ul class="mt-3 space-y-2 text-sm text-slate-700">
+    <li>비슷한 로직인데 처리 방식이 다른 함수 &rarr; <strong>물어볼 질문</strong>으로</li>
+    <li>최근 자주 바뀐 영역과, 직접 연결된 테스트 근거를 찾지 못한 파일</li>
+    <li>정적 호출 경로에서 사용 근거를 찾지 못한 함수</li>
+  </ul>
+  <p class="mt-4 text-xs text-slate-500">
+    코드 품질 점수를 매기지 않습니다. 원저자의 의도를 단정하지 않습니다.
+  </p>
+</section>
+{% endblock %}

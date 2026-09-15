@@ -66,12 +66,14 @@ def _evidence_line(ev: list[dict]) -> str:
     return ", ".join(f"`{e['file']}:{e['line']}`" for e in ev)
 
 
-def build(clone_path: Path, findings: list[dict]) -> str:
-    """HANDOFF.md 본문을 만든다."""
+def gather_evidence(clone_path: Path, findings: list[dict]) -> dict:
+    """보고서에 쓸 근거를 한 번에 모은다.
+
+    `build()`(마크다운)와 웹 화면(PHASE 11 Jinja2 템플릿)이 같은 데이터를 쓴다.
+    두 곳에서 각자 계산하면 문서와 화면이 어긋난다.
+    """
     if not (clone_path / ".git").is_dir():
         raise CollectError(f"git 저장소가 아닙니다: {clone_path}")
-
-    overview = _overview(clone_path)
 
     # analyzer 는 16절대로 테스트 파일을 포함해 모든 근거를 낸다.
     # 인수인계 문서에서 물어볼 대상은 앞으로 고칠 production 코드이므로 여기서 거른다.
@@ -80,17 +82,49 @@ def build(clone_path: Path, findings: list[dict]) -> str:
     churn = [r for r in high_churn(clone_path) if not is_test_file(Path(r["file"]))]
     dead = [d for d in dead_code(clone_path) if not is_test_file(Path(d["file"]))]
     gaps = [row for row in test_evidence_gap(clone_path) if not row["related_tests"]]
-    grouped = group_findings(findings)
 
-    churn_files = {row["file"] for row in churn}
-    gap_files = {row["file"] for row in gaps}
+    churn_by_file = {r["file"]: r for r in churn}
 
     # 19절 First Week 1순위: high-churn + test evidence gap
-    combined = sorted(
-        (row for row in gaps if row["file"] in churn_files),
-        key=lambda row: -row["commit_count"],
-    )
-    combined_files = {row["file"] for row in combined[:MAX_BEFORE_YOU_TOUCH]}
+    combined = sorted((row for row in gaps if row["file"] in churn_by_file),
+                      key=lambda row: -row["commit_count"])[:MAX_BEFORE_YOU_TOUCH]
+    for row in combined:
+        row["commits_60d"] = churn_by_file[row["file"]]["commits_60d"]
+        row["last_changed"] = churn_by_file[row["file"]]["last_changed"]
+
+    grouped = group_findings(findings)
+
+    # 19절 First Week 우선순위: high-churn+test gap -> consistency -> dead-code. 최대 3개.
+    week = []
+    if combined:
+        week.append(f"`{combined[0]['file']}` 의 변경 이력을 읽고, "
+                    "연결된 테스트가 정말 없는지 확인한다 (최근 60일 최다 변경 + 테스트 근거 없음)")
+    if grouped:
+        week.append(f"이전 개발자에게 물어볼 것: {grouped[0]['question']}")
+    if dead:
+        week.append(f"`{dead[0]['file']}:{dead[0]['line']}` 의 `{dead[0]['name']}` 이 "
+                    "실제로 쓰이지 않는지 확인한다 (정적 분석으로는 호출 근거를 찾지 못함)")
+
+    return {
+        "overview": _overview(clone_path),
+        "churn": churn,
+        "dead": dead,
+        "gaps": gaps,
+        "findings": grouped,
+        "before_you_touch": combined,
+        "first_week": week[:MAX_FIRST_WEEK],
+        "max_rows": MAX_LIST_ROWS,
+        "max_questions": MAX_QUESTIONS,
+    }
+
+
+def build(clone_path: Path, findings: list[dict]) -> str:
+    """HANDOFF.md 본문을 만든다."""
+    data = gather_evidence(clone_path, findings)
+    overview = data["overview"]
+    churn, dead, gaps = data["churn"], data["dead"], data["gaps"]
+    grouped, combined = data["findings"], data["before_you_touch"]
+    combined_files = {row["file"] for row in combined}
 
     out = ["# Re:Code Handoff", ""]
     out += [f"> `{overview['name']}` · {overview['branch']} · "
@@ -106,12 +140,11 @@ def build(clone_path: Path, findings: list[dict]) -> str:
     # 2. Before you touch this repo — 가장 강한 조합만. 나머지 섹션과 중복시키지 않는다.
     if combined:
         out += ["## 2. Before you touch this repo", ""]
-        for i, row in enumerate(combined[:MAX_BEFORE_YOU_TOUCH], 1):
-            churn_row = next(r for r in churn if r["file"] == row["file"])
+        for i, row in enumerate(combined, 1):
             out += [f"### {i}. `{row['file']}`", "",
                     "Evidence:",
-                    f"- 최근 60일간 {churn_row['commits_60d']}회 변경 "
-                    f"(마지막 {churn_row['last_changed']})",
+                    f"- 최근 60일간 {row['commits_60d']}회 변경 "
+                    f"(마지막 {row['last_changed']})",
                     f"- {row['message']}", "",
                     "Why this matters:",
                     "- 자주 바뀌는데 직접 연결된 테스트 근거가 없다. "
@@ -164,20 +197,11 @@ def build(clone_path: Path, findings: list[dict]) -> str:
             out += [f"", f"그 외 {len(dead) - MAX_LIST_ROWS}개 후보."]
         out += [""]
 
-    # 7. First week — 19절 우선순위 순서대로 최대 3개
-    week = []
-    if combined:
-        week.append(f"`{combined[0]['file']}` 의 변경 이력을 읽고, "
-                    "연결된 테스트가 정말 없는지 확인한다 (최근 60일 최다 변경 + 테스트 근거 없음)")
-    if grouped:
-        week.append(f"이전 개발자에게 물어볼 것: {grouped[0]['question']}")
-    if dead:
-        week.append(f"`{dead[0]['file']}:{dead[0]['line']}` 의 `{dead[0]['name']}` 이 "
-                    "실제로 쓰이지 않는지 확인한다 (정적 분석으로는 호출 근거를 찾지 못함)")
-
+    # 7. First week — 19절 우선순위. gather_evidence 가 이미 3개로 잘라 준다.
+    week = data["first_week"]
     if week:
         out += ["## 7. First week", ""]
-        out += [f"{i}. {item}" for i, item in enumerate(week[:MAX_FIRST_WEEK], 1)]
+        out += [f"{i}. {item}" for i, item in enumerate(week, 1)]
         out += [""]
 
     return "\n".join(out)

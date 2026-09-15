@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}{{ d.overview.name }} · Re:Code{% endblock %}
+
+{% block content %}
+<section class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-6">
+  <div>
+    <h1 class="text-2xl font-semibold text-slate-900">{{ d.overview.name }}</h1>
+    <p class="mt-1 text-sm text-slate-500">
+      <code>{{ d.overview.branch }}</code> ·
+      <code>{{ d.overview.head_sha }}</code> ·
+      커밋 {{ d.overview.commit_count }}개
+    </p>
+  </div>
+  <div class="flex gap-2">
+    <button id="copy"
+      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium
+             hover:border-slate-500 transition-colors">Markdown 복사</button>
+    <a href="/jobs/{{ job_id }}/download"
+      class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white
+             hover:bg-slate-700 transition-colors">HANDOFF.md 내려받기</a>
+  </div>
+</section>
+
+{# 23절: 화면의 주인공. finding 은 제목 / 근거 / 왜 확인해야 하는지 / 물어볼 질문 네 가지를 다 보여준다. #}
+<section class="mt-10">
+  <h2 class="text-xl font-semibold text-slate-900">Before you touch this repo</h2>
+  <p class="mt-1 text-sm text-slate-600">
+    수정하기 전에 이전 개발자에게 확인하면 좋을 것들입니다. 답을 정하지 않고 질문만 만듭니다.
+  </p>
+
+  {% if d.findings %}
+  <div class="mt-5 space-y-4">
+    {% for f in d.findings[:d.max_questions] %}
+    <article class="rounded-lg border border-slate-200 bg-white p-5">
+      <div class="flex items-start justify-between gap-4">
+        <h3 class="font-medium text-slate-900">{{ loop.index }}. {{ f.summary }}</h3>
+        <span class="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
+          confidence {{ f.confidence }}
+        </span>
+      </div>
+
+      <div class="mt-4 rounded-md bg-slate-50 p-3">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">물어볼 질문</div>
+        <p class="mt-1 text-slate-800">{{ f.question }}</p>
+      </div>
+
+      <div class="mt-4">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">코드에서 확인된 사실</div>
+        <p class="mt-1 text-sm text-slate-700">{{ f.why_clarify }}</p>
+      </div>
+
+      <div class="mt-4">
+        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">근거</div>
+        <ul class="mt-1 space-y-0.5">
+          {% for e in f.evidence %}
+          <li class="text-sm"><code class="text-slate-600">{{ e.file }}:{{ e.line }}</code></li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      {% if f.also_seen %}
+      <p class="mt-4 text-xs text-slate-500">
+        같은 패턴이 {{ f.also_seen | length }}곳에서 더 보입니다:
+        {% for p in f.also_seen[:3] %}<code>{{ p.a }}</code> ↔ <code>{{ p.b }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+      </p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for row in d.before_you_touch %}
+  <article class="mt-4 rounded-lg border border-slate-200 bg-white p-5">
+    <h3 class="font-medium text-slate-900"><code>{{ row.file }}</code></h3>
+    <div class="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">근거</div>
+    <ul class="mt-1 space-y-0.5 text-sm text-slate-700">
+      <li>최근 60일간 {{ row.commits_60d }}회 변경 (마지막 {{ row.last_changed }})</li>
+      <li>{{ row.message }}</li>
+    </ul>
+    <div class="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">왜 확인해야 하는지</div>
+    <p class="mt-1 text-sm text-slate-700">
+      자주 바뀌는데 직접 연결된 테스트 근거가 없습니다. 수정 시 회귀를 잡아줄 장치를 먼저 확인하세요.
+    </p>
+  </article>
+  {% endfor %}
+
+  {% if not d.findings and not d.before_you_touch %}
+  <p class="mt-5 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
+    확인이 필요한 항목을 찾지 못했습니다. 근거가 없으면 만들지 않습니다.
+  </p>
+  {% endif %}
+</section>
+
+{% if d.first_week %}
+<section class="mt-10">
+  <h2 class="text-lg font-semibold text-slate-900">First week</h2>
+  <p class="mt-1 text-sm text-slate-600">이 저장소를 맡은 첫 주에 할 만한 것 {{ d.first_week | length }}가지입니다.</p>
+  <ol class="mt-4 space-y-2">
+    {% for item in d.first_week %}
+    <li class="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
+      <span class="font-medium text-slate-400">{{ loop.index }}</span><span>{{ item }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endif %}
+
+{% set churn_rest = d.churn | rejectattr("file", "in", touched) | list %}
+{% if churn_rest %}
+<section class="mt-10">
+  <h2 class="text-lg font-semibold text-slate-900">High-change areas</h2>
+  <p class="mt-1 text-sm text-slate-600">최근 60일간 반복적으로 변경된 영역입니다. git 이력에서 센 수치입니다.</p>
+  <div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-sm">
+      <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+        <tr><th class="px-4 py-2 font-medium">파일</th><th class="px-4 py-2 font-medium">60일 변경</th><th class="px-4 py-2 font-medium">마지막 변경</th></tr>
+      </thead>
+      <tbody>
+        {% for r in churn_rest[:d.max_rows] %}
+        <tr class="border-t border-slate-100">
+          <td class="px-4 py-2"><code>{{ r.file }}</code></td>
+          <td class="px-4 py-2">{{ r.commits_60d }}</td>
+          <td class="px-4 py-2 text-slate-500">{{ r.last_changed }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if churn_rest | length > d.max_rows %}
+  <p class="mt-2 text-xs text-slate-500">그 외 {{ churn_rest | length - d.max_rows }}개 파일.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% set gaps_rest = d.gaps | rejectattr("file", "in", touched) | list %}
+{% if gaps_rest %}
+<section class="mt-10">
+  <h2 class="text-lg font-semibold text-slate-900">Test evidence gaps</h2>
+  <p class="mt-1 text-sm text-slate-600">
+    직접 연결된 테스트 근거를 찾지 못한 파일입니다. <strong>테스트가 없다는 뜻은 아닙니다.</strong>
+  </p>
+  <div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-sm">
+      <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+        <tr><th class="px-4 py-2 font-medium">파일</th><th class="px-4 py-2 font-medium">전체 커밋</th></tr>
+      </thead>
+      <tbody>
+        {% for r in gaps_rest[:d.max_rows] %}
+        <tr class="border-t border-slate-100">
+          <td class="px-4 py-2"><code>{{ r.file }}</code></td>
+          <td class="px-4 py-2">{{ r.commit_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if gaps_rest | length > d.max_rows %}
+  <p class="mt-2 text-xs text-slate-500">그 외 {{ gaps_rest | length - d.max_rows }}개 파일.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if d.dead %}
+<section class="mt-10">
+  <h2 class="text-lg font-semibold text-slate-900">Dead-code candidates</h2>
+  <p class="mt-1 text-sm text-slate-600">
+    정적 호출 경로에서 사용 근거를 찾지 못했습니다. <strong>삭제를 권하는 것이 아니라</strong> 확인이 필요한 후보입니다.
+  </p>
+  <div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <table class="w-full text-sm">
+      <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+        <tr><th class="px-4 py-2 font-medium">위치</th><th class="px-4 py-2 font-medium">이름</th><th class="px-4 py-2 font-medium">종류</th><th class="px-4 py-2 font-medium">confidence</th></tr>
+      </thead>
+      <tbody>
+        {% for x in d.dead[:d.max_rows] %}
+        <tr class="border-t border-slate-100">
+          <td class="px-4 py-2"><code>{{ x.file }}:{{ x.line }}</code></td>
+          <td class="px-4 py-2"><code>{{ x.name }}</code></td>
+          <td class="px-4 py-2 text-slate-500">{{ x.kind }}</td>
+          <td class="px-4 py-2 text-slate-500">{{ x.confidence }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if d.dead | length > d.max_rows %}
+  <p class="mt-2 text-xs text-slate-500">그 외 {{ d.dead | length - d.max_rows }}개 후보.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<textarea id="markdown" class="hidden">{{ markdown }}</textarea>
+{% endblock %}
+
+{% block script %}
+<script>
+  const btn = document.getElementById("copy");
+  btn.addEventListener("click", async () => {
+    const text = document.getElementById("markdown").value;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // https 가 아니면 clipboard API 가 막힌다. 로컬 http 대비 폴백.
+      const ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand("copy"); ta.remove();
+    }
+    const original = btn.textContent;
+    btn.textContent = "복사됨";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}분석 중 · Re:Code{% endblock %}
+
+{% block content %}
+<section class="py-6">
+  <h1 class="text-2xl font-semibold text-slate-900">분석 중</h1>
+  <p class="mt-2 text-sm text-slate-600"><code>{{ job.repo_url }}</code></p>
+
+  <div class="mt-8">
+    <div class="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+      <div id="bar" class="h-full bg-slate-900 transition-all duration-500"
+           style="width: {{ job.progress }}%"></div>
+    </div>
+    <p id="percent" class="mt-2 text-right text-xs text-slate-500">{{ job.progress }}%</p>
+  </div>
+
+  <ol id="steps" class="mt-8 space-y-3">
+    {% for key, label in steps %}
+    <li data-step="{{ key }}" class="flex items-center gap-3 text-sm text-slate-400">
+      <span class="mark w-5 text-center">·</span>
+      <span>{{ label }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <p id="note" class="mt-8 text-xs text-slate-500">
+    저장소 크기에 따라 몇 분 걸릴 수 있습니다. 이 페이지를 닫아도 분석은 계속됩니다.
+  </p>
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+  const JOB_ID = "{{ job.job_id }}";
+  const ORDER = {{ order | tojson }};
+  const bar = document.getElementById("bar");
+  const percent = document.getElementById("percent");
+  const note = document.getElementById("note");
+
+  function paint(status, progress) {
+    bar.style.width = progress + "%";
+    percent.textContent = progress + "%";
+    const at = ORDER.indexOf(status);
+    document.querySelectorAll("#steps li").forEach((li, i) => {
+      const mark = li.querySelector(".mark");
+      if (at >= 0 && i < at)       { li.className = "flex items-center gap-3 text-sm text-slate-500"; mark.textContent = "✓"; }
+      else if (at >= 0 && i === at){ li.className = "flex items-center gap-3 text-sm font-medium text-slate-900"; mark.textContent = "▸"; }
+      else                         { li.className = "flex items-center gap-3 text-sm text-slate-400"; mark.textContent = "·"; }
+    });
+  }
+
+  const src = new EventSource(`/api/jobs/${JOB_ID}/stream`);
+
+  src.addEventListener("progress", (e) => {
+    const d = JSON.parse(e.data);
+    paint(d.status, d.progress);
+  });
+
+  src.addEventListener("done", (e) => {
+    const d = JSON.parse(e.data);
+    src.close();
+    if (d.status === "completed") {
+      location.href = `/jobs/${JOB_ID}/report`;
+    } else {
+      note.className = "mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700";
+      note.textContent = "분석에 실패했습니다: " + (d.error || "원인 미상");
+    }
+  });
+
+  // SSE 가 끊기면 폴링으로 내려앉는다. 프록시 환경에서 스트림이 막히는 경우가 있다.
+  src.onerror = () => {
+    src.close();
+    const timer = setInterval(async () => {
+      const r = await fetch(`/api/jobs/${JOB_ID}`);
+      const d = await r.json();
+      paint(d.status, d.progress);
+      if (d.status === "completed") { clearInterval(timer); location.href = `/jobs/${JOB_ID}/report`; }
+      if (d.status === "failed")    { clearInterval(timer); note.textContent = "분석에 실패했습니다: " + (d.error || ""); }
+    }, 2000);
+  };
+</script>
+{% endblock %}

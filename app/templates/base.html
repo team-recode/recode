@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Re:Code{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 본문 가독성만 손본다. 빌드 스텝을 두지 않는다(1.4절). */
+    body { font-family: -apple-system, "Segoe UI", "Malgun Gothic", system-ui, sans-serif; }
+    code { font-family: "Cascadia Mono", Consolas, monospace; font-size: .875em; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <header class="border-b border-slate-200 bg-white">
+    <div class="mx-auto max-w-4xl px-6 py-4 flex items-baseline gap-3">
+      <a href="/" class="text-xl font-semibold tracking-tight">Re:Code</a>
+      <span class="text-sm text-slate-500">인수인계 전에 무엇을 물어야 하는지 찾아줍니다</span>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full max-w-4xl px-6 py-10 flex-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-slate-200 bg-white">
+    <div class="mx-auto max-w-4xl px-6 py-4 text-xs text-slate-500">
+      모든 항목에는 코드 근거가 붙어 있습니다. 근거가 없으면 만들지 않습니다.
+    </div>
+  </footer>
+
+  {% block script %}{% endblock %}
+</body>
+</html>
