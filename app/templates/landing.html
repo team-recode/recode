@@ -1,67 +1,154 @@
 {% extends "base.html" %}
-{% block title %}Re:Code{% endblock %}
+{% block title %}Re:Code — 넘겨받기 전에 무엇을 물어야 하는지{% endblock %}
 
 {% block content %}
-<section class="text-center py-10">
-  <h1 class="text-4xl font-bold tracking-tight text-slate-900">
-    코드는 남지만, 이유는 남지 않습니다.
+{# (너비%, 맥락줄인가) — 코드처럼 보이도록 길이를 불규칙하게 둔다.
+   맥락 줄은 한 기둥에 3개만. 많으면 여기저기 깜빡여 산만해진다. #}
+{% set lines = [(74,0),(52,0),(88,1),(45,0),(66,0),(81,0),(38,0),(71,0),(57,0),(84,0),
+                (49,1),(63,0),(77,0),(43,0),(69,0),(55,0),(86,0),(41,1),(72,0),(60,0)] %}
+
+<section class="rise relative text-center pt-6 pb-12">
+  {# 배경 장식: 회색 줄(코드)은 남고 파란 줄(맥락)만 사라진다. 1180px 미만에서는 숨긴다. #}
+  <div class="ctx-field" aria-hidden="true">
+    {% for side, offset in [("left", 0), ("right", 9)] %}
+    <div class="ctx-col {{ side }}">
+      {% set ns = namespace(n=0) %}
+      {% for w, why in lines %}
+      {% if why %}{% set ns.n = ns.n + 1 %}{% endif %}
+      {# 맥락 줄은 18초 주기 안에서 3초씩 어긋나게 둔다. 한 번에 한둘만 보인다. #}
+      <span class="ctx-line{% if why %} why{% endif %}"
+            style="width:{{ w }}%{% if why %};animation-delay:{{ (((ns.n - 1) * 6 + offset) % 18) }}s{% endif %}"></span>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {# 알약 배지 대신 얇은 선으로 감싼 커너. 박스가 없어야 가벼워 보인다. #}
+  <div class="relative z-10 flex items-center justify-center gap-4">
+    <span class="h-px w-10 sm:w-16" style="background:linear-gradient(90deg,transparent,var(--line))"></span>
+    <span class="mono text-[14px] font-semibold uppercase tracking-[0.26em] whitespace-nowrap"
+          style="color:var(--accent)">
+      AI Handoff Analyzer
+    </span>
+    <span class="h-px w-10 sm:w-16" style="background:linear-gradient(90deg,var(--line),transparent)"></span>
+  </div>
+
+  {# 줄 간격은 base.html 의 h1 규칙(1.38)이 담당한다. 여기서 text-4xl 류를 쓰면 다시 겹친다. #}
+  <h1 class="relative z-10 mt-9 text-[36px] sm:text-[52px] font-bold tracking-[-0.03em]">
+    코드는 남지만,<br>
+    <span class="inline-block bg-clip-text text-transparent pb-1"
+          style="background-image:linear-gradient(105deg,#60a5fa,#2563eb 45%,#1e3a8a)">이유는 남지 않습니다.</span>
   </h1>
-  <p class="mt-4 text-slate-600 leading-relaxed">
-    Re:Code는 낯선 저장소를 넘겨받은 개발자가<br class="hidden sm:block">
-    <strong class="text-slate-800">코드를 수정하기 전에 확인해야 할 것</strong>을 찾아줍니다.
+
+  <p class="relative z-10 mt-8 text-[16px] leading-[2] body-t max-w-2xl mx-auto">
+    낯선 저장소를 넘겨받았을 때,
+    <strong class="font-semibold ink">코드를 수정하기 전에 확인해야 할 것</strong>을 찾아
+    <br class="hidden sm:block">
+    이전 개발자에게 물어볼 질문으로 만들어 줍니다.
   </p>
 </section>
 
-<form method="post" action="/analyze" class="mt-4">
-  <div class="flex flex-col sm:flex-row gap-3">
-    <input
-      type="url" name="repo_url" id="repo_url" required
-      placeholder="https://github.com/owner/repo"
-      class="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-sm
-             focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent">
-    <button type="submit"
-      class="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white
-             hover:bg-slate-700 transition-colors">
-      Analyze
-    </button>
+<section class="rise" style="animation-delay:.06s">
+  <form method="post" action="/analyze">
+    <div class="rounded-2xl p-2 shadow-[0_2px_16px_rgba(37,99,235,.07)] transition
+                focus-within:shadow-[0_4px_24px_rgba(37,99,235,.16)]"
+         style="background:var(--surface); border:1px solid var(--line)">
+      <div class="flex flex-col sm:flex-row gap-2">
+        <div class="flex flex-1 items-center gap-3 px-4">
+          <svg class="h-[18px] w-[18px] shrink-0" style="color:var(--muted)" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.36 1.09 2.94.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/>
+          </svg>
+          <input type="url" name="repo_url" id="repo_url" required
+            placeholder="https://github.com/owner/repo"
+            class="w-full bg-transparent py-3.5 text-[15px] focus:outline-none"
+            style="color:var(--ink)">
+        </div>
+        <button type="submit"
+          class="rounded-xl px-8 py-3.5 text-[15px] font-semibold text-white
+                 shadow-[0_2px_10px_rgba(37,99,235,.28)] hover:brightness-110 active:scale-[.98] transition"
+          style="background:var(--accent)">
+          분석하기
+        </button>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="mt-4 flex items-start gap-2.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-sm text-rose-800">
+      <svg class="mt-0.5 h-[18px] w-[18px] shrink-0" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-9 3a1 1 0 1 0 2 0 1 1 0 0 0-2 0Zm1-8a1 1 0 0 0-1 1v3a1 1 0 0 0 2 0V6a1 1 0 0 0-1-1Z" clip-rule="evenodd"/></svg>
+      <span class="leading-relaxed">{{ error }}</span>
+    </div>
+    {% endif %}
+
+    <label class="mt-5 flex items-center justify-center gap-2.5 text-[14px] body-t cursor-pointer">
+      <input type="checkbox" name="skip_llm" value="1"
+             class="h-4 w-4 rounded border-2" style="border-color:var(--line); accent-color:var(--accent)">
+      AI 판정 없이 정적 근거만 분석
+      <span class="muted">(더 빠르고, API 사용량 없음)</span>
+    </label>
+  </form>
+</section>
+
+<section class="rise mt-16" style="animation-delay:.12s">
+  <div class="flex items-center gap-4">
+    <h2 class="text-[13px] font-bold uppercase tracking-[0.1em]" style="color:var(--accent-ink)">예제 저장소</h2>
+    <div class="h-px flex-1 rule"></div>
   </div>
 
-  {% if error %}
-  <p class="mt-3 text-sm text-red-600">{{ error }}</p>
-  {% endif %}
-
-  <label class="mt-3 flex items-center gap-2 text-sm text-slate-600">
-    <input type="checkbox" name="skip_llm" value="1" class="rounded border-slate-300">
-    AI 판정 없이 정적 근거만 분석 (빠르고, API 사용량 없음)
-  </label>
-</form>
-
-<section class="mt-10">
-  <h2 class="text-sm font-medium text-slate-500">예제 저장소</h2>
-  <div class="mt-3 grid gap-3 sm:grid-cols-3">
+  <div class="mt-5 grid gap-4 sm:grid-cols-3">
     {% for ex in examples %}
-    <button type="submit" form="example-{{ loop.index }}"
-      class="text-left rounded-lg border border-slate-200 bg-white p-4
-             hover:border-slate-400 transition-colors">
-      <div class="font-medium text-slate-900">{{ ex.name }}</div>
-      <div class="mt-1 text-xs text-slate-500">{{ ex.note }}</div>
-    </button>
-    <form id="example-{{ loop.index }}" method="post" action="/analyze" class="hidden">
+    <form method="post" action="/analyze">
       <input type="hidden" name="repo_url" value="{{ ex.url }}">
+      <button type="submit"
+        class="group h-full w-full text-left rounded-2xl p-5 transition-all duration-200
+               hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(37,99,235,.13)]"
+        style="background:var(--surface); border:1px solid var(--line-soft)"
+        onmouseover="this.style.borderColor='var(--accent)'"
+        onmouseout="this.style.borderColor='var(--line-soft)'">
+        <div class="mono text-[14px] font-semibold ink">{{ ex.name }}</div>
+        <div class="mt-2.5 text-[13px] leading-[1.75] body-t">{{ ex.note }}</div>
+        <div class="mt-4 text-[13px] font-semibold transition-colors" style="color:var(--accent)">
+          분석하기 &rarr;
+        </div>
+      </button>
     </form>
     {% endfor %}
   </div>
 </section>
 
-<section class="mt-10 rounded-lg border border-slate-200 bg-white p-5">
-  <h2 class="text-sm font-medium text-slate-500">분석하는 것</h2>
-  <ul class="mt-3 space-y-2 text-sm text-slate-700">
-    <li>비슷한 로직인데 처리 방식이 다른 함수 &rarr; <strong>물어볼 질문</strong>으로</li>
-    <li>최근 자주 바뀐 영역과, 직접 연결된 테스트 근거를 찾지 못한 파일</li>
-    <li>정적 호출 경로에서 사용 근거를 찾지 못한 함수</li>
-  </ul>
-  <p class="mt-4 text-xs text-slate-500">
-    코드 품질 점수를 매기지 않습니다. 원저자의 의도를 단정하지 않습니다.
-  </p>
+<section class="rise mt-14" style="animation-delay:.18s">
+  <div class="flex items-center gap-4">
+    <h2 class="text-[13px] font-bold uppercase tracking-[0.1em]" style="color:var(--accent-ink)">무엇을 찾나요</h2>
+    <div class="h-px flex-1 rule"></div>
+  </div>
+
+  <div class="mt-5 grid gap-4 sm:grid-cols-3">
+    {% for title, desc in [
+      ("비슷한데 다른 로직", "같은 일을 하는 함수가 서로 다르게 처리하는 지점을 찾아, 물어볼 질문으로 만듭니다."),
+      ("자주 바뀐 영역", "최근 변경이 잦은데 직접 연결된 테스트 근거를 찾지 못한 파일을 함께 봅니다."),
+      ("사용 근거를 못 찾은 코드", "정적 호출 경로에서 쓰임을 찾지 못한 함수를 확인 후보로 제시합니다.")
+    ] %}
+    <div class="rounded-2xl p-5" style="background:var(--surface); border:1px solid var(--line-soft)">
+      <div class="flex h-8 w-8 items-center justify-center rounded-xl text-[15px] font-bold"
+           style="background:var(--accent-bg); color:var(--accent-ink)">{{ loop.index }}</div>
+      <div class="mt-3.5 text-[15px] font-semibold ink">{{ title }}</div>
+      <p class="mt-2 text-[13px] leading-[1.8] body-t">{{ desc }}</p>
+    </div>
+    {% endfor %}
+  </div>
 </section>
+
+{# 제품의 약속. 푸터에서 반복하지 않고 여기에만 둔다. #}
+<div class="rise mt-14 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[13px] body-t"
+     style="animation-delay:.24s">
+  {% for line in ["코드 품질 점수를 매기지 않습니다",
+                  "원저자의 의도를 단정하지 않습니다",
+                  "근거가 없으면 만들지 않습니다"] %}
+  <span class="inline-flex items-center gap-2">
+    <svg class="h-3.5 w-3.5 shrink-0" style="color:var(--accent)" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/>
+    </svg>
+    {{ line }}
+  </span>
+  {% endfor %}
+</div>
 {% endblock %}

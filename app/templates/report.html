@@ -2,192 +2,225 @@
 {% block title %}{{ d.overview.name }} · Re:Code{% endblock %}
 
 {% block content %}
-<section class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-6">
-  <div>
-    <h1 class="text-2xl font-semibold text-slate-900">{{ d.overview.name }}</h1>
-    <p class="mt-1 text-sm text-slate-500">
-      <code>{{ d.overview.branch }}</code> ·
-      <code>{{ d.overview.head_sha }}</code> ·
-      커밋 {{ d.overview.commit_count }}개
-    </p>
+<section class="rise flex flex-wrap items-start justify-between gap-6">
+  <div class="min-w-0">
+    <div class="text-[13px] font-bold uppercase tracking-[0.1em]" style="color:var(--accent-ink)">Handoff report</div>
+    <h1 class="mono mt-2.5 text-[26px] font-bold tracking-tight break-all">{{ d.overview.name }}</h1>
+    <div class="mt-3 flex flex-wrap items-center gap-2 text-[13px] body-t">
+      <span class="mono rounded-md px-2 py-1" style="background:var(--accent-bg); color:var(--accent-ink)">{{ d.overview.branch }}</span>
+      <span class="mono rounded-md px-2 py-1" style="background:var(--accent-bg); color:var(--accent-ink)">{{ d.overview.head_sha }}</span>
+      <span>커밋 {{ d.overview.commit_count }}개</span>
+    </div>
   </div>
-  <div class="flex gap-2">
+
+  <div class="flex gap-2.5">
     <button id="copy"
-      class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium
-             hover:border-slate-500 transition-colors">Markdown 복사</button>
+      class="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold
+             transition hover:brightness-[.98] active:scale-[.98]"
+      style="background:var(--surface); border:1px solid var(--line); color:var(--body)">
+      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3.5A1.5 1.5 0 0 1 8.5 2h6A1.5 1.5 0 0 1 16 3.5v9a1.5 1.5 0 0 1-1.5 1.5h-6A1.5 1.5 0 0 1 7 12.5v-9Z"/><path d="M4.5 6A1.5 1.5 0 0 0 3 7.5v9A1.5 1.5 0 0 0 4.5 18h6a1.5 1.5 0 0 0 1.5-1.5V15H8.5A2.5 2.5 0 0 1 6 12.5V6h-1.5Z"/></svg>
+      Markdown 복사
+    </button>
     <a href="/jobs/{{ job_id }}/download"
-      class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white
-             hover:bg-slate-700 transition-colors">HANDOFF.md 내려받기</a>
+      class="inline-flex items-center gap-2 rounded-xl px-4 py-3 text-[14px] font-semibold text-white
+             shadow-[0_2px_10px_rgba(37,99,235,.26)] hover:brightness-110 active:scale-[.98] transition"
+      style="background:var(--accent)">
+      <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 0 0-1.5 0v8.19L6.28 7.97a.75.75 0 0 0-1.06 1.06l4.25 4.25a.75.75 0 0 0 1.06 0l4.25-4.25a.75.75 0 1 0-1.06-1.06l-2.97 2.97V2.75Z"/><path d="M3.5 12.75a.75.75 0 0 0-1.5 0v2.5A2.75 2.75 0 0 0 4.75 18h10.5A2.75 2.75 0 0 0 18 15.25v-2.5a.75.75 0 0 0-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5Z"/></svg>
+      HANDOFF.md 내려받기
+    </a>
   </div>
 </section>
 
-{# 23절: 화면의 주인공. finding 은 제목 / 근거 / 왜 확인해야 하는지 / 물어볼 질문 네 가지를 다 보여준다. #}
-<section class="mt-10">
-  <h2 class="text-xl font-semibold text-slate-900">Before you touch this repo</h2>
-  <p class="mt-1 text-sm text-slate-600">
-    수정하기 전에 이전 개발자에게 확인하면 좋을 것들입니다. 답을 정하지 않고 질문만 만듭니다.
+{# 점수가 아니라 개수다. 23절: 코드 품질 점수를 전면에 두지 않는다. #}
+<div class="rise mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4" style="animation-delay:.05s">
+  {% for label, value in [
+      ("물어볼 질문", d.findings | length),
+      ("자주 바뀐 파일", d.churn | length),
+      ("테스트 근거 못 찾음", d.gaps | length),
+      ("사용 근거 못 찾음", d.dead | length)
+  ] %}
+  <div class="rounded-xl px-4 py-3.5" style="background:var(--surface); border:1px solid var(--line-soft)">
+    <div class="text-[22px] font-bold leading-none" style="color:var(--accent-ink)">{{ value }}</div>
+    <div class="mt-2 text-[12px] leading-snug body-t">{{ label }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{# 23절: 화면의 주인공. 제목 / 물어볼 질문 / 확인된 사실 / 근거 를 모두 노출한다. #}
+<section class="rise mt-14" style="animation-delay:.1s">
+  <div class="flex items-center gap-4">
+    <h2 class="text-[22px] font-bold tracking-tight">Before you touch this repo</h2>
+    <div class="h-px flex-1 rule"></div>
+  </div>
+  <p class="mt-3 text-[15px] leading-[1.9] body-t">
+    수정하기 전에 이전 개발자에게 확인하면 좋을 것들입니다.
+    <strong class="font-semibold ink">답을 정하지 않고 질문만 만듭니다.</strong>
   </p>
 
   {% if d.findings %}
-  <div class="mt-5 space-y-4">
+  <div class="mt-7 space-y-5">
     {% for f in d.findings[:d.max_questions] %}
-    <article class="rounded-lg border border-slate-200 bg-white p-5">
-      <div class="flex items-start justify-between gap-4">
-        <h3 class="font-medium text-slate-900">{{ loop.index }}. {{ f.summary }}</h3>
-        <span class="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
-          confidence {{ f.confidence }}
-        </span>
+    <article class="overflow-hidden rounded-2xl shadow-[0_1px_10px_rgba(37,99,235,.06)]
+                    hover:shadow-[0_6px_22px_rgba(37,99,235,.11)] transition-shadow duration-200"
+             style="background:var(--surface); border:1px solid var(--line-soft)">
+      <div class="flex items-start gap-3.5 px-6 py-5" style="border-bottom:1px solid var(--line-soft)">
+        <span class="mono mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold"
+              style="background:var(--accent-bg); color:var(--accent-ink)">{{ loop.index }}</span>
+        <h3 class="flex-1 text-[16px] font-semibold">{{ f.summary }}</h3>
+        <span class="mono shrink-0 rounded-full px-2.5 py-1 text-[12px]"
+              style="background:var(--accent-bg); color:var(--accent-ink)"
+              title="모델이 스스로 매긴 확신도입니다. 품질 점수가 아닙니다.">{{ f.confidence }}</span>
       </div>
 
-      <div class="mt-4 rounded-md bg-slate-50 p-3">
-        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">물어볼 질문</div>
-        <p class="mt-1 text-slate-800">{{ f.question }}</p>
+      <div class="px-6 py-5" style="border-left:4px solid var(--accent); background:var(--accent-bg)">
+        <div class="text-[12px] font-bold uppercase tracking-[0.08em]" style="color:var(--accent-ink)">물어볼 질문</div>
+        <p class="mt-2.5 text-[16px] leading-[1.85] ink">{{ f.question }}</p>
       </div>
 
-      <div class="mt-4">
-        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">코드에서 확인된 사실</div>
-        <p class="mt-1 text-sm text-slate-700">{{ f.why_clarify }}</p>
-      </div>
+      <div class="px-6 py-5">
+        <div class="text-[12px] font-bold uppercase tracking-[0.08em] muted">코드에서 확인된 사실</div>
+        <p class="mt-2.5 text-[14px] leading-[1.9] body-t">{{ f.why_clarify }}</p>
 
-      <div class="mt-4">
-        <div class="text-xs font-medium uppercase tracking-wide text-slate-500">근거</div>
-        <ul class="mt-1 space-y-0.5">
+        <div class="mt-5 flex flex-wrap items-center gap-2">
+          <span class="text-[12px] font-bold uppercase tracking-[0.08em] muted">근거</span>
           {% for e in f.evidence %}
-          <li class="text-sm"><code class="text-slate-600">{{ e.file }}:{{ e.line }}</code></li>
+          <span class="mono rounded-md px-2.5 py-1 text-[12.5px]"
+                style="background:var(--bg-top); border:1px solid var(--line); color:var(--body)">{{ e.file }}:{{ e.line }}</span>
           {% endfor %}
-        </ul>
-      </div>
+        </div>
 
-      {% if f.also_seen %}
-      <p class="mt-4 text-xs text-slate-500">
-        같은 패턴이 {{ f.also_seen | length }}곳에서 더 보입니다:
-        {% for p in f.also_seen[:3] %}<code>{{ p.a }}</code> ↔ <code>{{ p.b }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
-      </p>
-      {% endif %}
+        {% if f.also_seen %}
+        <p class="mt-4 text-[13px] leading-[1.8] body-t">
+          같은 패턴이 <strong class="font-semibold">{{ f.also_seen | length }}곳</strong>에서 더 보입니다 &mdash;
+          {% for p in f.also_seen[:3] %}<span class="mono">{{ p.a }}</span> ↔ <span class="mono">{{ p.b }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+        </p>
+        {% endif %}
+      </div>
     </article>
     {% endfor %}
   </div>
   {% endif %}
 
   {% for row in d.before_you_touch %}
-  <article class="mt-4 rounded-lg border border-slate-200 bg-white p-5">
-    <h3 class="font-medium text-slate-900"><code>{{ row.file }}</code></h3>
-    <div class="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">근거</div>
-    <ul class="mt-1 space-y-0.5 text-sm text-slate-700">
-      <li>최근 60일간 {{ row.commits_60d }}회 변경 (마지막 {{ row.last_changed }})</li>
+  <article class="mt-5 rounded-2xl p-6 shadow-[0_1px_10px_rgba(37,99,235,.06)]"
+           style="background:var(--surface); border:1px solid var(--line-soft)">
+    <h3 class="mono text-[15px] font-semibold break-all">{{ row.file }}</h3>
+    <div class="mt-4 text-[12px] font-bold uppercase tracking-[0.08em] muted">근거</div>
+    <ul class="mt-2 space-y-1.5 text-[14px] leading-[1.8] body-t">
+      <li>최근 60일간 <strong class="font-semibold ink">{{ row.commits_60d }}회</strong> 변경 (마지막 {{ row.last_changed }})</li>
       <li>{{ row.message }}</li>
     </ul>
-    <div class="mt-3 text-xs font-medium uppercase tracking-wide text-slate-500">왜 확인해야 하는지</div>
-    <p class="mt-1 text-sm text-slate-700">
+    <div class="mt-5 text-[12px] font-bold uppercase tracking-[0.08em] muted">왜 확인해야 하는지</div>
+    <p class="mt-2 text-[14px] leading-[1.9] body-t">
       자주 바뀌는데 직접 연결된 테스트 근거가 없습니다. 수정 시 회귀를 잡아줄 장치를 먼저 확인하세요.
     </p>
   </article>
   {% endfor %}
 
   {% if not d.findings and not d.before_you_touch %}
-  <p class="mt-5 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-600">
-    확인이 필요한 항목을 찾지 못했습니다. 근거가 없으면 만들지 않습니다.
-  </p>
+  <div class="mt-7 rounded-2xl p-10 text-center"
+       style="background:var(--surface); border:1px solid var(--line-soft)">
+    <p class="text-[15px] body-t">확인이 필요한 항목을 찾지 못했습니다.</p>
+    <p class="mt-2 text-[13px] muted">근거가 없으면 만들지 않습니다.</p>
+  </div>
   {% endif %}
 </section>
 
 {% if d.first_week %}
-<section class="mt-10">
-  <h2 class="text-lg font-semibold text-slate-900">First week</h2>
-  <p class="mt-1 text-sm text-slate-600">이 저장소를 맡은 첫 주에 할 만한 것 {{ d.first_week | length }}가지입니다.</p>
-  <ol class="mt-4 space-y-2">
+<section class="rise mt-14">
+  <div class="flex items-center gap-4">
+    <h2 class="text-[20px] font-bold tracking-tight">First week</h2>
+    <div class="h-px flex-1 rule"></div>
+  </div>
+  <p class="mt-3 text-[15px] leading-[1.9] body-t">이 저장소를 맡은 첫 주에 할 만한 것 {{ d.first_week | length }}가지입니다.</p>
+  <ol class="mt-5 space-y-3">
     {% for item in d.first_week %}
-    <li class="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700">
-      <span class="font-medium text-slate-400">{{ loop.index }}</span><span>{{ item }}</span>
+    <li class="flex gap-4 rounded-xl p-5 shadow-[0_1px_8px_rgba(37,99,235,.05)]"
+        style="background:var(--surface); border:1px solid var(--line-soft)">
+      <span class="mono flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[13px] font-bold text-white"
+            style="background:var(--accent)">{{ loop.index }}</span>
+      <span class="text-[14px] leading-[1.9] body-t">{{ item }}</span>
     </li>
     {% endfor %}
   </ol>
 </section>
 {% endif %}
 
-{% set churn_rest = d.churn | rejectattr("file", "in", touched) | list %}
-{% if churn_rest %}
-<section class="mt-10">
-  <h2 class="text-lg font-semibold text-slate-900">High-change areas</h2>
-  <p class="mt-1 text-sm text-slate-600">최근 60일간 반복적으로 변경된 영역입니다. git 이력에서 센 수치입니다.</p>
-  <div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table class="w-full text-sm">
-      <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-        <tr><th class="px-4 py-2 font-medium">파일</th><th class="px-4 py-2 font-medium">60일 변경</th><th class="px-4 py-2 font-medium">마지막 변경</th></tr>
-      </thead>
-      <tbody>
-        {% for r in churn_rest[:d.max_rows] %}
-        <tr class="border-t border-slate-100">
-          <td class="px-4 py-2"><code>{{ r.file }}</code></td>
-          <td class="px-4 py-2">{{ r.commits_60d }}</td>
-          <td class="px-4 py-2 text-slate-500">{{ r.last_changed }}</td>
+{% macro table_section(title, note, shown, total, headers) %}
+<section class="rise mt-14">
+  <div class="flex items-center gap-4">
+    <h2 class="text-[20px] font-bold tracking-tight">{{ title }}</h2>
+    <div class="h-px flex-1 rule"></div>
+  </div>
+  <p class="mt-3 text-[15px] leading-[1.9] body-t">{{ note }}</p>
+  <div class="mt-5 overflow-x-auto rounded-2xl shadow-[0_1px_8px_rgba(37,99,235,.05)]"
+       style="background:var(--surface); border:1px solid var(--line-soft)">
+    <table class="w-full text-[14px]">
+      <thead>
+        <tr class="text-left text-[12px] uppercase tracking-[0.08em]"
+            style="border-bottom:1px solid var(--line-soft); color:var(--muted)">
+          {% for h in headers %}<th class="px-5 py-3 font-bold">{{ h }}</th>{% endfor %}
         </tr>
-        {% endfor %}
-      </tbody>
+      </thead>
+      <tbody>{{ caller() }}</tbody>
     </table>
   </div>
-  {% if churn_rest | length > d.max_rows %}
-  <p class="mt-2 text-xs text-slate-500">그 외 {{ churn_rest | length - d.max_rows }}개 파일.</p>
+  {% if total > shown %}
+  <p class="mt-3 text-[13px] muted">그 외 {{ total - shown }}개.</p>
   {% endif %}
 </section>
+{% endmacro %}
+
+{% set churn_rest = d.churn | rejectattr("file", "in", touched) | list %}
+{% if churn_rest %}
+{% call table_section("High-change areas",
+      "최근 60일간 반복적으로 변경된 영역입니다. git 이력에서 센 객관적 수치입니다.",
+      churn_rest[:d.max_rows] | length, churn_rest | length,
+      ["파일", "60일 변경", "마지막 변경"]) %}
+  {% for r in churn_rest[:d.max_rows] %}
+  <tr style="border-top:1px solid var(--line-soft)">
+    <td class="mono px-5 py-3 body-t break-all">{{ r.file }}</td>
+    <td class="mono px-5 py-3 font-semibold ink">{{ r.commits_60d }}</td>
+    <td class="mono px-5 py-3 muted">{{ r.last_changed }}</td>
+  </tr>
+  {% endfor %}
+{% endcall %}
 {% endif %}
 
 {% set gaps_rest = d.gaps | rejectattr("file", "in", touched) | list %}
 {% if gaps_rest %}
-<section class="mt-10">
-  <h2 class="text-lg font-semibold text-slate-900">Test evidence gaps</h2>
-  <p class="mt-1 text-sm text-slate-600">
-    직접 연결된 테스트 근거를 찾지 못한 파일입니다. <strong>테스트가 없다는 뜻은 아닙니다.</strong>
-  </p>
-  <div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table class="w-full text-sm">
-      <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-        <tr><th class="px-4 py-2 font-medium">파일</th><th class="px-4 py-2 font-medium">전체 커밋</th></tr>
-      </thead>
-      <tbody>
-        {% for r in gaps_rest[:d.max_rows] %}
-        <tr class="border-t border-slate-100">
-          <td class="px-4 py-2"><code>{{ r.file }}</code></td>
-          <td class="px-4 py-2">{{ r.commit_count }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% if gaps_rest | length > d.max_rows %}
-  <p class="mt-2 text-xs text-slate-500">그 외 {{ gaps_rest | length - d.max_rows }}개 파일.</p>
-  {% endif %}
-</section>
+{% call table_section("Test evidence gaps",
+      "직접 연결된 테스트 근거를 찾지 못한 파일입니다. 테스트가 없다는 뜻은 아닙니다.",
+      gaps_rest[:d.max_rows] | length, gaps_rest | length,
+      ["파일", "전체 커밋"]) %}
+  {% for r in gaps_rest[:d.max_rows] %}
+  <tr style="border-top:1px solid var(--line-soft)">
+    <td class="mono px-5 py-3 body-t break-all">{{ r.file }}</td>
+    <td class="mono px-5 py-3 body-t">{{ r.commit_count }}</td>
+  </tr>
+  {% endfor %}
+{% endcall %}
 {% endif %}
 
 {% if d.dead %}
-<section class="mt-10">
-  <h2 class="text-lg font-semibold text-slate-900">Dead-code candidates</h2>
-  <p class="mt-1 text-sm text-slate-600">
-    정적 호출 경로에서 사용 근거를 찾지 못했습니다. <strong>삭제를 권하는 것이 아니라</strong> 확인이 필요한 후보입니다.
-  </p>
-  <div class="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table class="w-full text-sm">
-      <thead class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-        <tr><th class="px-4 py-2 font-medium">위치</th><th class="px-4 py-2 font-medium">이름</th><th class="px-4 py-2 font-medium">종류</th><th class="px-4 py-2 font-medium">confidence</th></tr>
-      </thead>
-      <tbody>
-        {% for x in d.dead[:d.max_rows] %}
-        <tr class="border-t border-slate-100">
-          <td class="px-4 py-2"><code>{{ x.file }}:{{ x.line }}</code></td>
-          <td class="px-4 py-2"><code>{{ x.name }}</code></td>
-          <td class="px-4 py-2 text-slate-500">{{ x.kind }}</td>
-          <td class="px-4 py-2 text-slate-500">{{ x.confidence }}%</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% if d.dead | length > d.max_rows %}
-  <p class="mt-2 text-xs text-slate-500">그 외 {{ d.dead | length - d.max_rows }}개 후보.</p>
-  {% endif %}
-</section>
+{% call table_section("Dead-code candidates",
+      "정적 호출 경로에서 사용 근거를 찾지 못했습니다. 삭제를 권하는 것이 아니라 확인이 필요한 후보입니다.",
+      d.dead[:d.max_rows] | length, d.dead | length,
+      ["위치", "이름", "종류", "confidence"]) %}
+  {% for x in d.dead[:d.max_rows] %}
+  <tr style="border-top:1px solid var(--line-soft)">
+    <td class="mono px-5 py-3 body-t break-all">{{ x.file }}:{{ x.line }}</td>
+    <td class="mono px-5 py-3 font-medium ink">{{ x.name }}</td>
+    <td class="px-5 py-3 body-t">{{ x.kind }}</td>
+    <td class="mono px-5 py-3 muted">{{ x.confidence }}%</td>
+  </tr>
+  {% endfor %}
+{% endcall %}
 {% endif %}
+
+<div class="mt-16 flex justify-center">
+  <a href="/" class="text-[14px] font-medium transition-colors" style="color:var(--accent)">&larr; 다른 저장소 분석하기</a>
+</div>
 
 <textarea id="markdown" class="hidden">{{ markdown }}</textarea>
 {% endblock %}
@@ -205,9 +238,9 @@
       ta.value = text; document.body.appendChild(ta); ta.select();
       document.execCommand("copy"); ta.remove();
     }
-    const original = btn.textContent;
-    btn.textContent = "복사됨";
-    setTimeout(() => { btn.textContent = original; }, 1500);
+    const original = btn.innerHTML;
+    btn.innerHTML = '<svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z" clip-rule="evenodd"/></svg> 복사됨';
+    setTimeout(() => { btn.innerHTML = original; }, 1600);
   });
 </script>
 {% endblock %}

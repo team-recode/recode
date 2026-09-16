@@ -4,29 +4,135 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Re:Code{% endblock %}</title>
+  {# 탭 아이콘. 헤더 로고와 같은 배경 없는 버전. 16px 에서 읽히도록 획만 굵게 잡았다. #}
+  <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='4'%20y1='6'%20x2='28'%20y2='26'%20gradientUnits='userSpaceOnUse'%3E%3Cstop%20stop-color='%237cb2fb'/%3E%3Cstop%20offset='1'%20stop-color='%232563eb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath%20d='M12.4%205.5%204.2%2016l8.2%2010.5M19.6%205.5%2027.8%2016l-8.2%2010.5'%20stroke='url%28%23g%29'%20stroke-width='3.4'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='2.7'%20fill='url%28%23g%29'/%3E%3C/svg%3E">
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    /* 본문 가독성만 손본다. 빌드 스텝을 두지 않는다(1.4절). */
-    body { font-family: -apple-system, "Segoe UI", "Malgun Gothic", system-ui, sans-serif; }
-    code { font-family: "Cascadia Mono", Consolas, monospace; font-size: .875em; }
+    /* 빌드 스텝을 두지 않는다(1.4절). CDN + 이 블록이 전부다.
+       색은 전부 여기서만 정의한다. 파스텔 블루 베이스. */
+    :root {
+      --bg-top:     #e8f1fd;
+      --bg-bottom:  #f6faff;
+      --ink:        #0f2544;   /* 제목. 본문보다 확실히 진하게 */
+      --body:       #33465f;   /* 본문. 흐린 회색 대신 대비 확보 */
+      --muted:      #5a6e88;   /* 보조. 이보다 더 흐리게 쓰지 않는다 */
+      --line:       #cfe0f7;
+      --line-soft:  #e2edfb;
+      --accent:     #2563eb;
+      --accent-ink: #1d4ed8;
+      --accent-bg:  #e6f0ff;
+      --surface:    #ffffff;
+    }
+
+    body {
+      font-family: Inter, -apple-system, "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      color: var(--body);
+      background:
+        radial-gradient(52rem 26rem at 50% -10rem, rgba(37,99,235,.10), transparent 68%),
+        linear-gradient(to bottom, var(--bg-top), var(--bg-bottom) 38%, var(--bg-bottom));
+      background-attachment: fixed;
+    }
+    code, .mono { font-family: "JetBrains Mono", "Cascadia Mono", Consolas, monospace; }
+
+    /* 제목은 줄 간격을 넉넉히. 붙어 보인다는 피드백 반영.
+       Tailwind 의 text-4xl 등은 line-height 까지 같이 지정하는데,
+       text-[54px] 같은 임의값은 글자 크기만 바꾼다. 그대로 두면 큰 화면에서 줄이 겹친다.
+       !important 로 제목의 줄 간격을 못 덮어쓰게 고정한다. */
+    h1, h2, h3 { color: var(--ink); letter-spacing: -0.015em; }
+    h1 { line-height: 1.38 !important; }
+    h2, h3 { line-height: 1.5 !important; }
+
+    .ink   { color: var(--ink); }
+    .body-t{ color: var(--body); }
+    .muted { color: var(--muted); }
+    .card  { background: var(--surface); border: 1px solid var(--line-soft); }
+    .rule  { background: linear-gradient(90deg, var(--line), transparent); }
+
+    .rise { animation: rise .5s cubic-bezier(.2,.7,.3,1) both; }
+    @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+    /* 히어로 배경 장식 — 제품 문장을 그대로 시각화한다.
+       회색 줄(코드)은 그대로 있고, 파란 줄(맥락/주석)만 떠올랐다 사라진다.
+       본문 가독성을 해치지 않도록 좌우 기둥에만 두고 안쪽으로 갈수록 마스크로 지운다. */
+    .ctx-field {
+      position: absolute; inset: 0; z-index: 0;
+      pointer-events: none; overflow: hidden;
+      display: none;
+    }
+    @media (min-width: 1180px) { .ctx-field { display: block; } }
+
+    .ctx-col {
+      position: absolute; top: 0; width: 190px;
+      display: flex; flex-direction: column; gap: 13px;
+    }
+    .ctx-col.left  { left: -40px;  mask-image: linear-gradient(to right, #000 10%, transparent 92%); }
+    .ctx-col.right { right: -40px; mask-image: linear-gradient(to left,  #000 10%, transparent 92%); }
+    .ctx-col.left  { -webkit-mask-image: linear-gradient(to right, #000 10%, transparent 92%); }
+    .ctx-col.right { -webkit-mask-image: linear-gradient(to left,  #000 10%, transparent 92%); }
+
+    .ctx-line { height: 7px; border-radius: 4px; background: var(--line); opacity: .38; }
+
+    /* 맥락 줄. 천천히 떠올랐다 조용히 흐려진다 — "이유는 남지 않습니다".
+       좌우로 미는 움직임은 넣지 않는다. 시선이 따라가서 산만해진다.
+       줄 수를 줄이고 주기를 길게 잡아, 한 번에 한둘만 보이게 한다. */
+    .ctx-line.why {
+      background: linear-gradient(90deg, #9cc6fc, #4f8ff0);
+      opacity: 0;
+      animation: forget 18s ease-in-out infinite;
+    }
+    @keyframes forget {
+      0%, 4%     { opacity: 0; }
+      22%, 34%   { opacity: .40; }
+      58%        { opacity: .12; }
+      72%, 100%  { opacity: 0; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ctx-line.why { animation: none; opacity: .3; }
+      .rise { animation: none; }
+    }
+
+    ::selection { background: rgba(37,99,235,.16); }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col antialiased">
 
-  <header class="border-b border-slate-200 bg-white">
-    <div class="mx-auto max-w-4xl px-6 py-4 flex items-baseline gap-3">
-      <a href="/" class="text-xl font-semibold tracking-tight">Re:Code</a>
-      <span class="text-sm text-slate-500">인수인계 전에 무엇을 물어야 하는지 찾아줍니다</span>
+  <header class="sticky top-0 z-20 border-b backdrop-blur"
+          style="border-color: var(--line-soft); background: rgba(255,255,255,.78)">
+    <div class="mx-auto max-w-5xl px-6 h-16 flex items-center justify-between gap-4">
+      <a href="/" class="flex items-center gap-2.5 group">
+        {# 로고: 코드 괄호 ‹ › 사이의 점 = "코드 안에 물어볼 것이 있다".
+           배경 사각형 없이 획 자체에 그라데이션을 입힌다. #}
+        <svg viewBox="0 0 32 32" class="h-[30px] w-[30px] shrink-0 transition-transform duration-200 group-hover:scale-110" aria-hidden="true">
+          <defs>
+            <linearGradient id="logoGrad" x1="4" y1="6" x2="28" y2="26" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#7cb2fb"/><stop offset="1" stop-color="#2563eb"/>
+            </linearGradient>
+          </defs>
+          <path d="M12.6 7.5 5.4 16l7.2 8.5M19.4 7.5 26.6 16l-7.2 8.5"
+                stroke="url(#logoGrad)" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <circle cx="16" cy="16" r="2.2" fill="url(#logoGrad)"/>
+        </svg>
+        <span class="text-[20px] font-bold tracking-tight ink leading-none">Re<span style="color:var(--accent)">:</span>Code</span>
+      </a>
+      <a href="https://github.com/team-recode/recode" target="_blank" rel="noopener"
+         class="text-[13px] font-medium muted hover:text-[color:var(--accent)] transition-colors">GitHub</a>
     </div>
   </header>
 
-  <main class="mx-auto w-full max-w-4xl px-6 py-10 flex-1">
+  <main class="mx-auto w-full max-w-5xl px-6 py-14 flex-1">
     {% block content %}{% endblock %}
   </main>
 
-  <footer class="border-t border-slate-200 bg-white">
-    <div class="mx-auto max-w-4xl px-6 py-4 text-xs text-slate-500">
-      모든 항목에는 코드 근거가 붙어 있습니다. 근거가 없으면 만들지 않습니다.
+  {# 원칙 문구는 랜딩 하단에 한 번만 둔다. 푸터에서 반복하면 중복으로 읽힌다. #}
+  <footer class="border-t" style="border-color: var(--line-soft)">
+    <div class="mx-auto max-w-5xl px-6 py-6 flex flex-wrap items-center justify-between gap-3 text-[13px] muted">
+      <span>Re<span style="color:var(--accent)">:</span>Code &nbsp;·&nbsp; 낯선 저장소 인수인계 분석기</span>
+      <span class="mono">2026</span>
     </div>
   </footer>
 

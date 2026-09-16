@@ -71,6 +71,23 @@ def init_db() -> None:
     if engine is None:
         raise RuntimeError("DATABASE_URL 이 .env 에 없습니다.")
     Base.metadata.create_all(engine)
+    _fail_orphaned_jobs()
+
+
+def _fail_orphaned_jobs() -> None:
+    """서버가 내려가면 BackgroundTasks 는 함께 사라진다.
+
+    그때 진행 중이던 job 행은 `judging` 같은 상태로 영원히 남아
+    사용자에게는 끝나지 않는 진행 화면이 된다. 기동 시 정리한다.
+    """
+    with SessionLocal() as session:
+        orphans = session.query(Job).filter(Job.status.in_(RUNNING_STATUSES)).all()
+        for job in orphans:
+            job.status = STATUS_FAILED
+            job.error = "서버가 재시작되어 분석이 중단되었습니다. 다시 시도하세요."
+        if orphans:
+            session.commit()
+            print(f"중단된 job {len(orphans)}건을 failed 로 정리했습니다.")
 
 
 def new_job_id() -> str:

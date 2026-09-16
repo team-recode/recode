@@ -2,30 +2,46 @@
 {% block title %}분석 중 · Re:Code{% endblock %}
 
 {% block content %}
-<section class="py-6">
-  <h1 class="text-2xl font-semibold text-slate-900">분석 중</h1>
-  <p class="mt-2 text-sm text-slate-600"><code>{{ job.repo_url }}</code></p>
-
-  <div class="mt-8">
-    <div class="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-      <div id="bar" class="h-full bg-slate-900 transition-all duration-500"
-           style="width: {{ job.progress }}%"></div>
+<section class="rise mx-auto max-w-xl">
+  <div class="text-center">
+    <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl shadow-[0_2px_14px_rgba(37,99,235,.12)]"
+         style="background:var(--surface); border:1px solid var(--line)">
+      <svg class="h-6 w-6 animate-spin" style="color:var(--accent)" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2.5" opacity=".18"/>
+        <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
     </div>
-    <p id="percent" class="mt-2 text-right text-xs text-slate-500">{{ job.progress }}%</p>
+    <h1 class="mt-6 text-[28px] font-bold tracking-tight">저장소를 읽는 중</h1>
+    <p class="mono mt-3 text-[13px] leading-relaxed body-t break-all">{{ job.repo_url }}</p>
   </div>
 
-  <ol id="steps" class="mt-8 space-y-3">
+  <div class="mt-10">
+    <div class="h-2 w-full overflow-hidden rounded-full" style="background:var(--line-soft)">
+      <div id="bar" class="h-full rounded-full transition-all duration-700 ease-out"
+           style="width: {{ job.progress }}%; background: linear-gradient(90deg,#60a5fa,#2563eb)"></div>
+    </div>
+    <div class="mt-3 flex justify-between text-[13px]">
+      <span id="label" class="font-medium" style="color:var(--accent-ink)">준비 중</span>
+      <span id="percent" class="mono muted">{{ job.progress }}%</span>
+    </div>
+  </div>
+
+  <ol id="steps" class="mt-10 space-y-1.5">
     {% for key, label in steps %}
-    <li data-step="{{ key }}" class="flex items-center gap-3 text-sm text-slate-400">
-      <span class="mark w-5 text-center">·</span>
-      <span>{{ label }}</span>
+    <li data-step="{{ key }}"
+        class="flex items-center gap-3.5 rounded-xl px-4 py-3 text-[15px] leading-relaxed transition-all duration-300"
+        style="color:var(--muted)">
+      <span class="mark flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]"
+            style="border:1.5px solid var(--line)"></span>
+      <span class="text">{{ label }}</span>
     </li>
     {% endfor %}
   </ol>
 
-  <p id="note" class="mt-8 text-xs text-slate-500">
+  <div id="note" class="mt-10 rounded-xl px-5 py-4 text-[13px] leading-[1.8] body-t"
+       style="background:var(--surface); border:1px solid var(--line-soft)">
     저장소 크기에 따라 몇 분 걸릴 수 있습니다. 이 페이지를 닫아도 분석은 계속됩니다.
-  </p>
+  </div>
 </section>
 {% endblock %}
 
@@ -35,18 +51,43 @@
   const ORDER = {{ order | tojson }};
   const bar = document.getElementById("bar");
   const percent = document.getElementById("percent");
+  const label = document.getElementById("label");
   const note = document.getElementById("note");
+
+  const BASE = "flex items-center gap-3.5 rounded-xl px-4 py-3 text-[15px] leading-relaxed transition-all duration-300";
+  const MARK = "mark flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px]";
 
   function paint(status, progress) {
     bar.style.width = progress + "%";
     percent.textContent = progress + "%";
     const at = ORDER.indexOf(status);
+
     document.querySelectorAll("#steps li").forEach((li, i) => {
       const mark = li.querySelector(".mark");
-      if (at >= 0 && i < at)       { li.className = "flex items-center gap-3 text-sm text-slate-500"; mark.textContent = "✓"; }
-      else if (at >= 0 && i === at){ li.className = "flex items-center gap-3 text-sm font-medium text-slate-900"; mark.textContent = "▸"; }
-      else                         { li.className = "flex items-center gap-3 text-sm text-slate-400"; mark.textContent = "·"; }
+      li.className = BASE;
+      mark.className = MARK;
+
+      if (at >= 0 && i < at) {
+        li.style.cssText = "color: var(--body)";
+        mark.style.cssText = "background: var(--accent); color: #fff; border: none";
+        mark.textContent = "✓";
+      } else if (at >= 0 && i === at) {
+        li.style.cssText = "color: var(--accent-ink); background: var(--accent-bg); font-weight: 600";
+        mark.style.cssText = "border: 2px solid var(--accent)";
+        mark.innerHTML = '<span class="h-2 w-2 rounded-full animate-pulse" style="background:var(--accent)"></span>';
+        label.textContent = li.querySelector(".text").textContent;
+      } else {
+        li.style.cssText = "color: var(--muted)";
+        mark.style.cssText = "border: 1.5px solid var(--line)";
+        mark.textContent = "";
+      }
     });
+  }
+
+  function fail(message) {
+    note.style.cssText = "background:#fff1f2; border:1px solid #fecdd3";
+    note.className = "mt-10 rounded-xl px-5 py-4 text-[14px] leading-relaxed text-rose-800";
+    note.textContent = "분석에 실패했습니다: " + (message || "원인 미상");
   }
 
   const src = new EventSource(`/api/jobs/${JOB_ID}/stream`);
@@ -60,10 +101,10 @@
     const d = JSON.parse(e.data);
     src.close();
     if (d.status === "completed") {
+      label.textContent = "완료";
       location.href = `/jobs/${JOB_ID}/report`;
     } else {
-      note.className = "mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700";
-      note.textContent = "분석에 실패했습니다: " + (d.error || "원인 미상");
+      fail(d.error);
     }
   });
 
@@ -71,11 +112,10 @@
   src.onerror = () => {
     src.close();
     const timer = setInterval(async () => {
-      const r = await fetch(`/api/jobs/${JOB_ID}`);
-      const d = await r.json();
+      const d = await (await fetch(`/api/jobs/${JOB_ID}`)).json();
       paint(d.status, d.progress);
       if (d.status === "completed") { clearInterval(timer); location.href = `/jobs/${JOB_ID}/report`; }
-      if (d.status === "failed")    { clearInterval(timer); note.textContent = "분석에 실패했습니다: " + (d.error || ""); }
+      if (d.status === "failed")    { clearInterval(timer); fail(d.error); }
     }, 2000);
   };
 </script>
