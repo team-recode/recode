@@ -1,6 +1,6 @@
 # Current Status
 
-**Updated: 2026-09-16 (화) — PHASE 10·11·12 완료. 자기참조 데모에서 진짜 드리프트 2건 확보. 다음은 PHASE 13/14**
+**Updated: 2026-09-17 (수) — PHASE 13 사용자 테스트 시작. 비ASCII 경로 버그 수정. 다음은 PHASE 14 배포**
 
 ## Done
 
@@ -531,6 +531,41 @@ SSE 로 바꾸면 모든 단계가 보인다.
 
 **⚠ 발표용으로 이 SHA 를 고정한다.** 이후 커밋에서 위 2건을 고치면 finding 이 사라진다.
 수정은 제출(9/20) 후에 한다.
+
+### 버그 수정 — 비ASCII 경로에서 커밋 수가 0으로 집계됨 (9/17)
+
+팀원 저장소(`minsol12/etf-ai-advisor`, 경로에 한글 포함)를 돌리다 발견.
+
+git 은 기본 설정(`core.quotepath=true`)에서 ASCII 밖 경로를 이스케이프해 내보낸다:
+```
+"week2/2\354\243\274\354\260\250_\355\224\204\353\241\234.../app.py"
+```
+`--name-only` 를 파싱하는 `commit_counts()` · `high_churn()` 이 이 이름을 실제 파일과 매칭하지 못해
+**한글·일본어·중국어 경로 파일은 커밋 수가 전부 0 이 되고 High-Churn 에서도 통째로 빠졌다.**
+
+`analyzer/collect.py` 의 `_git()` 에 `-c core.quotepath=false` 를 추가해 한 곳에서 막았다.
+모든 git 호출이 이 헬퍼를 지나므로 `commit_counts` · `high_churn` 이 함께 고쳐진다.
+
+- 수정 전: 두 파일 모두 `commit_count: 0`, High-Churn 0건
+- 수정 후: `rag_module.py` 6회 · `app.py` 4회, High-Churn 2건
+- ASCII 경로 저장소 회귀 없음 (mhctools 출력 바이트 단위 동일 확인)
+
+> **한국 저장소를 데모에 쓰면 바로 드러났을 결함이다.** PHASE 16 데모 저장소 선정 전에 잡아서 다행.
+
+### PHASE 13 — 팀원 저장소 시험 분석 (9/17)
+
+`minsol12/etf-ai-advisor` (Python 100%, 커밋 13개, 파일 2개, 함수 21개)
+
+**결과: 후보 0쌍 → finding 0건.** LLM 호출 0회.
+
+프로토타입 단계라 비교할 유사 함수 쌍 자체가 생기지 않았다.
+24절이 지정한 "결과가 별로일 경우" framing 이 그대로 적용된다:
+
+> "작은 저장소에서는 근거가 없어 아무것도 만들지 않았습니다.
+> Re:Code 가 억지 경고를 만들지 않는다는 점도 함께 확인했습니다."
+
+**사용자 테스트 대상으로는 부적합** (2파일이면 A 조건 20분이 성립하지 않음).
+→ `tenacity` / `cerberus` 교차 설계로 진행.
 
 ## In Progress
 

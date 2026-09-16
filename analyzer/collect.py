@@ -38,7 +38,11 @@ def _git(args: list[str], cwd: Path | None = None, timeout: int = 30) -> str:
     """git 명령을 실행하고 stdout을 돌려준다. 실패하면 stderr를 담아 올린다."""
     try:
         result = subprocess.run(
-            ["git", *args],
+            # core.quotepath=false 가 없으면 git 이 ASCII 밖 경로를
+            # "week2/2\354\243\274.../app.py" 처럼 이스케이프해 내보낸다.
+            # 그러면 --name-only 를 파싱하는 쪽에서 파일명이 안 맞아
+            # 한글 경로 파일의 커밋 수가 전부 0 이 되고 High-Churn 에서도 빠진다.
+            ["git", "-c", "core.quotepath=false", *args],
             cwd=cwd,
             capture_output=True,
             text=True,
