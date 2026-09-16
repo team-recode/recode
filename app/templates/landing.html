@@ -89,22 +89,21 @@
   </div>
 
   <div class="mt-5 grid gap-4 sm:grid-cols-3">
+    {# 미리 분석해 둔 결과로 바로 간다. 새로 돌리면 10분이 넘는다. #}
     {% for ex in examples %}
-    <form method="post" action="/analyze">
-      <input type="hidden" name="repo_url" value="{{ ex.url }}">
-      <button type="submit"
-        class="group h-full w-full text-left rounded-2xl p-5 transition-all duration-200
-               hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(37,99,235,.13)]"
-        style="background:var(--surface); border:1px solid var(--line-soft)"
-        onmouseover="this.style.borderColor='var(--accent)'"
-        onmouseout="this.style.borderColor='var(--line-soft)'">
-        <div class="mono text-[14px] font-semibold ink">{{ ex.name }}</div>
-        <div class="mt-2.5 text-[13px] leading-[1.7] body-t">{{ ex.note }}</div>
-        <div class="mt-4 text-[13px] font-semibold" style="color:var(--accent)">분석하기 &rarr;</div>
-      </button>
-    </form>
+    <a href="/examples/{{ ex.slug }}"
+      class="group block h-full rounded-2xl p-5 transition-all duration-200
+             hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(37,99,235,.13)]"
+      style="background:var(--surface); border:1px solid var(--line-soft)"
+      onmouseover="this.style.borderColor='var(--accent)'"
+      onmouseout="this.style.borderColor='var(--line-soft)'">
+      <div class="mono text-[14px] font-semibold ink">{{ ex.name }}</div>
+      <div class="mt-2.5 text-[13px] leading-[1.7] body-t">{{ ex.note }}</div>
+      <div class="mt-4 text-[13px] font-semibold" style="color:var(--accent)">결과 바로 보기 &rarr;</div>
+    </a>
     {% endfor %}
   </div>
+  <p class="mt-3 text-[13px] muted">예제는 미리 분석해 둔 결과라 기다리지 않고 바로 열립니다.</p>
 </section>
 
 <section class="rise mt-14" style="animation-delay:.18s">

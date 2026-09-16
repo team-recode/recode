@@ -30,15 +30,22 @@ from judge import report as report_mod
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
-# 23절 Landing: 예제 저장소 2~3개. 이미 clone 되어 있어 데모에서 빨리 끝난다.
+# 23절 Landing 의 예제 저장소. 클릭하면 미리 분석해 둔 결과를 바로 연다.
+# 매번 새로 돌리면 후보 100쌍 x 요청 간격 7초 = 10분이 넘어 시연에 쓸 수 없다.
 EXAMPLES = [
-    {"name": "openvax/mhctools", "url": "https://github.com/openvax/mhctools",
-     "note": "바이오인포 래퍼. 같은 인터페이스를 여러 도구가 구현"},
-    {"name": "psf/cachecontrol", "url": "https://github.com/psf/cachecontrol",
-     "note": "소형 HTTP 캐시 라이브러리. 2분 이내"},
-    {"name": "psf/requests", "url": "https://github.com/psf/requests",
-     "note": "널리 쓰이는 HTTP 클라이언트"},
+    {"slug": "mhctools", "dir": "openvax__mhctools",
+     "name": "openvax/mhctools", "url": "https://github.com/openvax/mhctools",
+     "note": "같은 인터페이스를 여러 도구가 제각각 구현한 저장소"},
+    {"slug": "cachecontrol", "dir": "psf__cachecontrol",
+     "name": "psf/cachecontrol", "url": "https://github.com/psf/cachecontrol",
+     "note": "작은 HTTP 캐시 라이브러리. 훑어보기 좋습니다"},
+    {"slug": "requests", "dir": "psf__requests",
+     "name": "psf/requests", "url": "https://github.com/psf/requests",
+     "note": "많이 쓰는 HTTP 클라이언트"},
 ]
+
+# 웹에서 새 저장소를 분석할 때의 상한. 요청 간격이 7초라 이보다 크면 화면에서 너무 오래 기다린다.
+WEB_MAX_PAIRS = 20
 
 # 23절 Progress 화면 문구. db 상태값 순서와 1:1 로 맞춘다.
 STEP_LABELS = [
@@ -139,8 +146,38 @@ def submit(request: Request, tasks: BackgroundTasks, repo_url: str = Form(...),
             request, "landing.html",
             {"examples": EXAMPLES, "error": str(exc).splitlines()[0]}, status_code=400)
 
-    job_id = _create_job(session, tasks, repo_url.strip(), bool(skip_llm), 0)
+    job_id = _create_job(session, tasks, repo_url.strip(), bool(skip_llm), WEB_MAX_PAIRS)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+
+@app.get("/examples/{slug}")
+def open_example(slug: str, tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    """미리 분석해 둔 예제 결과를 바로 연다.
+
+    시연에서 10분씩 기다릴 수 없으므로 저장된 HANDOFF.md 를 그대로 쓴다.
+    결과물이 없으면(다른 PC 에서 clone 만 받은 경우 등) 평소대로 분석을 돌린다.
+    """
+    example = next((e for e in EXAMPLES if e["slug"] == slug), None)
+    if example is None:
+        raise HTTPException(status_code=404, detail="예제를 찾을 수 없습니다.")
+
+    # 같은 결과를 가리키는 완료된 job 이 이미 있으면 그대로 재사용한다.
+    done = (session.query(db.Job)
+            .filter(db.Job.repo_url == example["url"], db.Job.status == db.STATUS_COMPLETED)
+            .order_by(db.Job.created_at.desc()).first())
+    if done and Path(done.result_path or "").is_file():
+        return RedirectResponse(f"/jobs/{done.id}/report", status_code=303)
+
+    report = analyze.OUTPUT_ROOT / example["dir"] / "HANDOFF.md"
+    if not report.is_file():
+        job_id = _create_job(session, tasks, example["url"], False, WEB_MAX_PAIRS)
+        return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+
+    job = db.Job(id=db.new_job_id(), repo_url=example["url"],
+                 status=db.STATUS_COMPLETED, progress=100, result_path=str(report))
+    session.add(job)
+    session.commit()
+    return RedirectResponse(f"/jobs/{job.id}/report", status_code=303)
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
