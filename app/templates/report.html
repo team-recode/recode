@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}{{ d.overview.name }} · Re:Code{% endblock %}
+{% block title %}{{ d.overview.name }} | Re:Code{% endblock %}
 
 {% block content %}
 <section class="rise flex flex-wrap items-start justify-between gap-6">
   <div class="min-w-0">
-    <div class="text-[13px] font-bold uppercase tracking-[0.1em]" style="color:var(--accent-ink)">Handoff report</div>
+    <div class="kicker text-[12px] font-bold uppercase" style="color:var(--accent-ink)">Handoff report</div>
     <h1 class="mono mt-2.5 text-[26px] font-bold tracking-tight break-all">{{ d.overview.name }}</h1>
     <div class="mt-3 flex flex-wrap items-center gap-2 text-[13px] body-t">
       <span class="mono rounded-md px-2 py-1" style="background:var(--accent-bg); color:var(--accent-ink)">{{ d.overview.branch }}</span>
@@ -53,8 +53,8 @@
     <div class="h-px flex-1 rule"></div>
   </div>
   <p class="mt-3 text-[15px] leading-[1.9] body-t">
-    수정하기 전에 이전 개발자에게 확인하면 좋을 것들입니다.
-    <strong class="font-semibold ink">답을 정하지 않고 질문만 만듭니다.</strong>
+    코드를 고치기 전에 한 번 물어보면 좋을 것들입니다.
+    <strong class="font-semibold ink">답은 정해두지 않았습니다. 그건 만든 사람만 아니까요.</strong>
   </p>
 
   {% if d.findings %}
@@ -73,16 +73,16 @@
       </div>
 
       <div class="px-6 py-5" style="border-left:4px solid var(--accent); background:var(--accent-bg)">
-        <div class="text-[12px] font-bold uppercase tracking-[0.08em]" style="color:var(--accent-ink)">물어볼 질문</div>
+        <div class="kicker text-[12px] font-bold uppercase" style="color:var(--accent-ink)">물어볼 질문</div>
         <p class="mt-2.5 text-[16px] leading-[1.85] ink">{{ f.question }}</p>
       </div>
 
       <div class="px-6 py-5">
-        <div class="text-[12px] font-bold uppercase tracking-[0.08em] muted">코드에서 확인된 사실</div>
+        <div class="kicker text-[12px] font-bold uppercase muted">코드에서 확인된 사실</div>
         <p class="mt-2.5 text-[14px] leading-[1.9] body-t">{{ f.why_clarify }}</p>
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
-          <span class="text-[12px] font-bold uppercase tracking-[0.08em] muted">근거</span>
+          <span class="kicker text-[12px] font-bold uppercase muted">근거</span>
           {% for e in f.evidence %}
           <span class="mono rounded-md px-2.5 py-1 text-[12.5px]"
                 style="background:var(--bg-top); border:1px solid var(--line); color:var(--body)">{{ e.file }}:{{ e.line }}</span>
@@ -105,14 +105,15 @@
   <article class="mt-5 rounded-2xl p-6 shadow-[0_1px_10px_rgba(37,99,235,.06)]"
            style="background:var(--surface); border:1px solid var(--line-soft)">
     <h3 class="mono text-[15px] font-semibold break-all">{{ row.file }}</h3>
-    <div class="mt-4 text-[12px] font-bold uppercase tracking-[0.08em] muted">근거</div>
+    <div class="mt-4 kicker text-[12px] font-bold uppercase muted">근거</div>
     <ul class="mt-2 space-y-1.5 text-[14px] leading-[1.8] body-t">
       <li>최근 60일간 <strong class="font-semibold ink">{{ row.commits_60d }}회</strong> 변경 (마지막 {{ row.last_changed }})</li>
       <li>{{ row.message }}</li>
     </ul>
-    <div class="mt-5 text-[12px] font-bold uppercase tracking-[0.08em] muted">왜 확인해야 하는지</div>
+    <div class="mt-5 kicker text-[12px] font-bold uppercase muted">왜 확인해야 하는지</div>
     <p class="mt-2 text-[14px] leading-[1.9] body-t">
-      자주 바뀌는데 직접 연결된 테스트 근거가 없습니다. 수정 시 회귀를 잡아줄 장치를 먼저 확인하세요.
+      최근에 자주 바뀌는데, 이 파일을 확인해 줄 테스트가 보이지 않습니다.
+      고치기 전에 무엇이 이 코드를 지켜주는지 먼저 살펴보세요.
     </p>
   </article>
   {% endfor %}
@@ -120,8 +121,8 @@
   {% if not d.findings and not d.before_you_touch %}
   <div class="mt-7 rounded-2xl p-10 text-center"
        style="background:var(--surface); border:1px solid var(--line-soft)">
-    <p class="text-[15px] body-t">확인이 필요한 항목을 찾지 못했습니다.</p>
-    <p class="mt-2 text-[13px] muted">근거가 없으면 만들지 않습니다.</p>
+    <p class="text-[15px] body-t">물어볼 만한 것을 찾지 못했습니다.</p>
+    <p class="mt-2 text-[13px] muted">근거를 못 찾으면 억지로 만들지 않습니다.</p>
   </div>
   {% endif %}
 </section>
@@ -132,7 +133,7 @@
     <h2 class="text-[20px] font-bold tracking-tight">First week</h2>
     <div class="h-px flex-1 rule"></div>
   </div>
-  <p class="mt-3 text-[15px] leading-[1.9] body-t">이 저장소를 맡은 첫 주에 할 만한 것 {{ d.first_week | length }}가지입니다.</p>
+  <p class="mt-3 text-[15px] leading-[1.8] body-t">이 저장소를 맡았다면 첫 주에 이것부터 해보세요.</p>
   <ol class="mt-5 space-y-3">
     {% for item in d.first_week %}
     <li class="flex gap-4 rounded-xl p-5 shadow-[0_1px_8px_rgba(37,99,235,.05)]"
@@ -174,7 +175,7 @@
 {% set churn_rest = d.churn | rejectattr("file", "in", touched) | list %}
 {% if churn_rest %}
 {% call table_section("High-change areas",
-      "최근 60일간 반복적으로 변경된 영역입니다. git 이력에서 센 객관적 수치입니다.",
+      "최근 60일 동안 자주 바뀐 파일입니다. git 이력을 그대로 센 숫자입니다.",
       churn_rest[:d.max_rows] | length, churn_rest | length,
       ["파일", "60일 변경", "마지막 변경"]) %}
   {% for r in churn_rest[:d.max_rows] %}
@@ -190,7 +191,7 @@
 {% set gaps_rest = d.gaps | rejectattr("file", "in", touched) | list %}
 {% if gaps_rest %}
 {% call table_section("Test evidence gaps",
-      "직접 연결된 테스트 근거를 찾지 못한 파일입니다. 테스트가 없다는 뜻은 아닙니다.",
+      "이 파일을 직접 다루는 테스트를 찾지 못했습니다. 테스트가 아예 없다는 뜻은 아닙니다.",
       gaps_rest[:d.max_rows] | length, gaps_rest | length,
       ["파일", "전체 커밋"]) %}
   {% for r in gaps_rest[:d.max_rows] %}
@@ -204,7 +205,7 @@
 
 {% if d.dead %}
 {% call table_section("Dead-code candidates",
-      "정적 호출 경로에서 사용 근거를 찾지 못했습니다. 삭제를 권하는 것이 아니라 확인이 필요한 후보입니다.",
+      "코드를 따라가 봤지만 부르는 곳을 찾지 못했습니다. 지우라는 뜻이 아니라, 한 번 확인해 보시라는 뜻입니다.",
       d.dead[:d.max_rows] | length, d.dead | length,
       ["위치", "이름", "종류", "confidence"]) %}
   {% for x in d.dead[:d.max_rows] %}
@@ -219,7 +220,7 @@
 {% endif %}
 
 <div class="mt-16 flex justify-center">
-  <a href="/" class="text-[14px] font-medium transition-colors" style="color:var(--accent)">&larr; 다른 저장소 분석하기</a>
+  <a href="/" class="text-[14px] font-medium transition-colors" style="color:var(--accent)">&larr; 다른 저장소도 분석해 보기</a>
 </div>
 
 <textarea id="markdown" class="hidden">{{ markdown }}</textarea>

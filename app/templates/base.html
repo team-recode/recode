@@ -3,13 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Re:Code{% endblock %}</title>
+  <title>{% block title %}Re:Code | 인수인계 분석기{% endblock %}</title>
   {# 탭 아이콘. 헤더 로고와 같은 배경 없는 버전. 16px 에서 읽히도록 획만 굵게 잡았다. #}
   <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='4'%20y1='6'%20x2='28'%20y2='26'%20gradientUnits='userSpaceOnUse'%3E%3Cstop%20stop-color='%237cb2fb'/%3E%3Cstop%20offset='1'%20stop-color='%232563eb'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath%20d='M12.4%205.5%204.2%2016l8.2%2010.5M19.6%205.5%2027.8%2016l-8.2%2010.5'%20stroke='url%28%23g%29'%20stroke-width='3.4'%20stroke-linecap='round'%20stroke-linejoin='round'%20fill='none'/%3E%3Ccircle%20cx='16'%20cy='16'%20r='2.7'%20fill='url%28%23g%29'/%3E%3C/svg%3E">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
+  {# Inter 에는 한글 글리프가 없어 한글이 전부 맑은 고딕으로 떨어졌다.
+     Pretendard 로 한글·영문을 한 서체에서 처리한다. 코드만 JetBrains Mono. #}
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     /* 빌드 스텝을 두지 않는다(1.4절). CDN + 이 블록이 전부다.
        색은 전부 여기서만 정의한다. 파스텔 블루 베이스. */
@@ -28,8 +31,12 @@
     }
 
     body {
-      font-family: Inter, -apple-system, "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+      font-family: "Pretendard Variable", Pretendard, -apple-system, "Segoe UI",
+                   "Malgun Gothic", system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
+      /* 한글은 자간을 벌리면 오히려 읽기 나빠진다. 살짝 좁혀서 자연스럽게 이어 붙인다. */
+      letter-spacing: -0.012em;
+      word-break: keep-all;
       color: var(--body);
       background:
         radial-gradient(52rem 26rem at 50% -10rem, rgba(37,99,235,.10), transparent 68%),
@@ -42,9 +49,12 @@
        Tailwind 의 text-4xl 등은 line-height 까지 같이 지정하는데,
        text-[54px] 같은 임의값은 글자 크기만 바꾼다. 그대로 두면 큰 화면에서 줄이 겹친다.
        !important 로 제목의 줄 간격을 못 덮어쓰게 고정한다. */
-    h1, h2, h3 { color: var(--ink); letter-spacing: -0.015em; }
+    h1, h2, h3 { color: var(--ink); letter-spacing: -0.028em; }
     h1 { line-height: 1.38 !important; }
     h2, h3 { line-height: 1.5 !important; }
+
+    /* 섹션 라벨용. 영문 대문자만 살짝 벌리고, 한글에는 쓰지 않는다. */
+    .kicker { letter-spacing: 0.12em; }
 
     .ink   { color: var(--ink); }
     .body-t{ color: var(--body); }

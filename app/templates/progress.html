@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}분석 중 · Re:Code{% endblock %}
+{% block title %}분석 중 | Re:Code{% endblock %}
 
 {% block content %}
 <section class="rise mx-auto max-w-xl">
@@ -11,7 +11,7 @@
         <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
       </svg>
     </div>
-    <h1 class="mt-6 text-[28px] font-bold tracking-tight">저장소를 읽는 중</h1>
+    <h1 class="mt-6 text-[28px] font-bold">코드를 읽고 있습니다</h1>
     <p class="mono mt-3 text-[13px] leading-relaxed body-t break-all">{{ job.repo_url }}</p>
   </div>
 
@@ -21,7 +21,7 @@
            style="width: {{ job.progress }}%; background: linear-gradient(90deg,#60a5fa,#2563eb)"></div>
     </div>
     <div class="mt-3 flex justify-between text-[13px]">
-      <span id="label" class="font-medium" style="color:var(--accent-ink)">준비 중</span>
+      <span id="label" class="font-medium" style="color:var(--accent-ink)">시작하는 중</span>
       <span id="percent" class="mono muted">{{ job.progress }}%</span>
     </div>
   </div>
@@ -40,7 +40,7 @@
 
   <div id="note" class="mt-10 rounded-xl px-5 py-4 text-[13px] leading-[1.8] body-t"
        style="background:var(--surface); border:1px solid var(--line-soft)">
-    저장소 크기에 따라 몇 분 걸릴 수 있습니다. 이 페이지를 닫아도 분석은 계속됩니다.
+    저장소가 크면 몇 분 걸립니다. 창을 닫아도 분석은 계속되니 나중에 다시 오셔도 됩니다.
   </div>
 </section>
 {% endblock %}
@@ -87,7 +87,7 @@
   function fail(message) {
     note.style.cssText = "background:#fff1f2; border:1px solid #fecdd3";
     note.className = "mt-10 rounded-xl px-5 py-4 text-[14px] leading-relaxed text-rose-800";
-    note.textContent = "분석에 실패했습니다: " + (message || "원인 미상");
+    note.textContent = "분석을 끝내지 못했습니다. " + (message || "원인을 확인하지 못했습니다.");
   }
 
   const src = new EventSource(`/api/jobs/${JOB_ID}/stream`);
@@ -101,7 +101,7 @@
     const d = JSON.parse(e.data);
     src.close();
     if (d.status === "completed") {
-      label.textContent = "완료";
+      label.textContent = "다 됐습니다";
       location.href = `/jobs/${JOB_ID}/report`;
     } else {
       fail(d.error);
