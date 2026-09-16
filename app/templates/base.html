@@ -53,6 +53,13 @@
     h1 { line-height: 1.38 !important; }
     h2, h3 { line-height: 1.5 !important; }
 
+    /* 줄바꿈 품질.
+       balance: 제목의 줄 길이를 고르게 나눠 마지막 줄에 한 단어만 남는 것을 막는다.
+       pretty : 본문에서 외톨이 단어와 어색한 줄 끝을 줄인다.
+       둘 다 미지원 브라우저에서는 무시되고 기본 줄바꿈으로 떨어진다. */
+    h1, h2, h3 { text-wrap: balance; }
+    p, li, .prose-ko { text-wrap: pretty; }
+
     /* 섹션 라벨용. 영문 대문자만 살짝 벌리고, 한글에는 쓰지 않는다. */
     .kicker { letter-spacing: 0.12em; }
 

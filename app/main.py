@@ -35,13 +35,13 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 EXAMPLES = [
     {"slug": "mhctools", "dir": "openvax__mhctools",
      "name": "openvax/mhctools", "url": "https://github.com/openvax/mhctools",
-     "note": "같은 인터페이스를 여러 도구가 제각각 구현한 저장소"},
+     "note": "같은 기능을 여러 파일이 제각각 구현한 저장소입니다"},
     {"slug": "cachecontrol", "dir": "psf__cachecontrol",
      "name": "psf/cachecontrol", "url": "https://github.com/psf/cachecontrol",
-     "note": "작은 HTTP 캐시 라이브러리. 훑어보기 좋습니다"},
+     "note": "규모가 작아 결과를 훑어보기 좋습니다"},
     {"slug": "requests", "dir": "psf__requests",
      "name": "psf/requests", "url": "https://github.com/psf/requests",
-     "note": "많이 쓰는 HTTP 클라이언트"},
+     "note": "많이 쓰이는 라이브러리라 코드가 익숙합니다"},
 ]
 
 # 웹에서 새 저장소를 분석할 때의 상한. 요청 간격이 7초라 이보다 크면 화면에서 너무 오래 기다린다.
