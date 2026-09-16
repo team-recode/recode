@@ -14,8 +14,8 @@
 확인사실: 일반 필드에서는 setattr을 사용하여 값을 직접 할당하는 반면, related 필드에서는 getattr로 가져온 객체의 set 메서드를 호출하여 데이터를 저장하고 있습니다.
 근거   : django/db/models/fields/__init__.py:1141, django/db/models/fields/related.py:2186
 
-라벨: 
-메모: 
+라벨: useful
+메모: 일반 필드는 setattr, related 는 manager.set() 사용. ORM 다대다/역참조 시 동작 차이 지점. 원 저자 의도 확인이 실제 인수인계에 유효
 
 ==============================================================================
 [02] confidence 0.9  (유사도 0.9636)
@@ -28,8 +28,8 @@
 확인사실: _check_decimal_places는 0을 허용(decimal_places < 0)하지만, _check_max_digits는 0을 허용하지 않는(max_digits <= 0) 차이가 있습니다.
 근거   : django/db/models/fields/__init__.py:1816, django/db/models/fields/__init__.py:1847
 
-라벨: 
-메모: 
+라벨: useful
+메모: decimal_places=0 은 허용(정수형 표현) vs max_digits=0 은 금지(무의미). 비대칭 검증 규칙의 이유가 실제 사용자에게 직접 노출되는 유효성 조건
 
 ==============================================================================
 [03] confidence 0.9  (유사도 0.9543)
@@ -42,8 +42,8 @@
 확인사실: 일반 필드(Field)의 get_db_prep_value는 get_prep_value를 호출하여 값을 변환하는 반면, 관계 필드(RelatedField)는 target_field의 get_db_prep_value를 재귀적으로 호출하고 있습니다.
 근거   : django/db/models/fields/__init__.py:2910, django/db/models/fields/related.py:1286
 
-라벨: 
-메모: 
+라벨: useful
+메모: RelatedField 가 target_field 로 위임하는 패턴이 재귀 호출. FK 체인 시 성능/무한재귀 리스크 고려됐는지 확인 가치 있음
 
 ==============================================================================
 [04] confidence 0.9  (유사도 0.9419)
@@ -56,8 +56,8 @@
 확인사실: 함수 A는 필드 자체의 from_db_value 존재 여부만 확인하여 반환하는 반면, 함수 B는 특정 메서드 비교와 함께 output_field의 변환기까지 결합하여 반환하고 있습니다.
 근거   : django/db/models/fields/__init__.py:960, django/db/models/expressions.py:202
 
-라벨: 
-메모: 
+라벨: useful
+메모: Expression 은 output_field 의 변환기를 추가로 결합. Field 만 확장한 개발자가 놓치기 쉬운 확장 포인트 차이
 
 ==============================================================================
 [05] confidence 0.9  (유사도 0.9404)
@@ -70,8 +70,8 @@
 확인사실: QuerySet.__repr__은 self.query를 참조하는 반면, Model.__repr__은 self 객체 자체를 참조하여 문자열을 생성하고 있습니다.
 근거   : django/db/models/query.py:2558, django/db/models/base.py:640
 
-라벨: 
-메모: 
+라벨: not_useful
+메모: 클래스 성격이 근본적으로 다름 (QuerySet=쿼리 래퍼, Model=도메인 인스턴스). repr 대상이 self.query 와 self 로 갈리는 건 언어/프레임워크 상식. 인수받은 개발자가 원저자에게 물어볼 사안이 아님
 
 ==============================================================================
 [06] confidence 0.9  (유사도 0.9179)
@@ -84,8 +84,8 @@
 확인사실: has_change_permission은 'change' 권한만 확인하는 반면, has_view_permission은 'view' 권한과 'change' 권한 중 하나라도 있으면 True를 반환하도록 구현되어 있습니다.
 근거   : django/contrib/admin/options.py:652, django/contrib/admin/options.py:666
 
-라벨: 
-메모: 
+라벨: useful
+메모: view 권한이 change 권한도 포함한다는 게 Admin 권한 모델의 실제 정책. 인수받은 개발자가 권한 로직 수정 전 반드시 확인할 지점
 
 ==============================================================================
 [07] confidence 0.8  (유사도 0.9414)
@@ -98,8 +98,8 @@
 확인사실: _check_db_comment는 databases 파라미터에 기본값 None을 허용하고 475라인에서 이를 체크하지만, _check_db_table_comment는 databases를 필수 인자로 받고 해당 체크 로직이 없습니다.
 근거   : django/db/models/fields/__init__.py:475, django/db/models/base.py:1888
 
-라벨: 
-메모: 
+라벨: useful
+메모: 같은 databases 인자를 한쪽은 None 허용/체크, 한쪽은 필수. 호출 계약 불일치가 실제 있는 지점
 
 ==============================================================================
 [08] confidence 0.8  (유사도 0.9315)
@@ -112,8 +112,8 @@
 확인사실: to_python(1651-1656행)에서는 f-string을 사용하여 모델과 필드 이름을 구성하고 경고 메시지를 생성하는 반면, get_prep_value(1710-1715행)에서는 % 연산자를 사용하여 동일한 작업을 수행하고 있습니다.
 근거   : django/db/models/fields/__init__.py:1702, django/db/models/fields/__init__.py:1710
 
-라벨: 
-메모: 
+라벨: not_useful
+메모: f-string vs % 는 순수 스타일 차이(동작 동일). 18절 규칙 10("스타일 차이만으로 finding 만들지 마라") 필터가 놓친 케이스. 프롬프트 개선 재료
 
 ==============================================================================
 [09] confidence 0.8  (유사도 0.9213)
@@ -126,8 +126,8 @@
 확인사실: get_db_prep_value는 prepared 인자를 기본값 False로 정의하고 있으나, get_db_prep_save에서는 이를 명시적으로 전달하고 있습니다. 반면 get_db_prep_value의 다른 호출부들에서는 이 인자를 생략하는 경우가 존재합니다.
 근거   : django/db/models/fields/__init__.py:1048, django/db/models/fields/__init__.py:1052
 
-라벨: 
-메모: 
+라벨: not_useful
+메모: 기본값과 동일한 값(False)을 명시적으로 전달. 순수 스타일, 동작 차이 0. 스타일 오탐 필터(규칙 10)가 놓친 두 번째 케이스 (첫 번째는 [08] f-string vs %)
 
 ==============================================================================
 [10] confidence 0.8  (유사도 0.9206)
@@ -140,5 +140,5 @@
 확인사실: 기본 필드 구현(함수 A)은 connection.ops.cast_data_types를 참조하여 타입을 결정하지만, RelatedField 구현(함수 B)은 target_field의 cast_db_type을 직접 호출하여 위임하고 있습니다.
 근거   : django/db/models/fields/__init__.py:939, django/db/models/fields/related.py:1320
 
-라벨: 
-메모: 
+라벨: useful
+메모: [03]과 유사한 target_field 위임 패턴이지만 cast_db_type 은 DB 스키마 결정에 직접 영향. FK 시 데이터 타입이 어떻게 정해지는지 명확히 물어볼 만함

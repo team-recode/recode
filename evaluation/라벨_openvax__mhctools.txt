@@ -14,8 +14,8 @@
 확인사실: mhctools/netmhc_pan4.py의 __init__은 부모 클래스 호출 시 mode를 'elution_score'로 전달하는 반면, mhctools/netmhc_pan42.py의 __init__은 'binding_affinity'를 전달하고 있다. 두 클래스가 버전 차이 외에 유사한 구조를 가짐에도 불구하고 서로 다른 기본 동작 모드를 선택하고 있다.
 근거   : mhctools/netmhc_pan4.py:92, mhctools/netmhc_pan42.py:112
 
-라벨: 
-메모: 
+라벨: useful
+메모: elution_score vs binding_affinity 는 도메인상 별개 예측값. 버전별 기본 모드 차이는 원저자 의도 확인 필요한 진짜 질문
 
 ==============================================================================
 [02] confidence 0.9  (유사도 0.9691)
@@ -28,8 +28,8 @@
 확인사실: BigMHC 클래스에서는 mhc_dependence를 'single_allele'로, mhc_class를 'I'로 고정하여 반환하지만, WrapperBase 클래스에서는 각각 'none'과 인스턴스 속성인 self.mhc_class를 사용하고 있다.
 근거   : mhctools/bigmhc.py:157, mhctools/wrapper_base.py:73
 
-라벨: 
-메모: 
+라벨: useful
+메모: BigMHC 가 mhc_class='I' 로 고정한 게 실제 제약(class II 미지원)인지 미구현 상태인지 원저자만 답변 가능
 
 ==============================================================================
 [03] confidence 0.9  (유사도 0.9684)
@@ -42,8 +42,8 @@
 확인사실: NetMHCpan41 클래스는 초기화 시 mode를 'binding_affinity'로 설정하는 반면, NetMHCpan42 클래스는 'elution_score'로 설정하고 있다. 두 버전의 생성자 구조는 동일하지만 내부적으로 전달하는 기본 mode 값에 차이가 존재한다.
 근거   : mhctools/netmhc_pan41.py:115, mhctools/netmhc_pan42.py:93
 
-라벨: 
-메모: 
+라벨: ambiguous
+메모: [01]과 같은 "버전별 기본 mode 차이" 패턴 재출현. 리포트 계층에서는 이미 합쳐진(묶기) 항목. raw finding 에서는 별건으로 나와 중복감
 
 ==============================================================================
 [04] confidence 0.9  (유사도 0.9683)
@@ -56,8 +56,8 @@
 확인사실: mhctools/sample.py의 함수는 predict_proteins의 반환값인 딕셔너리 키에서 sample_name을 동적으로 추출하여 사용하며 중첩된 딕셔너리 구조를 처리합니다. 반면 mhctools/netcleave.py의 함수는 predict_proteins의 반환값 중 값(values)만 순회하며, sample_name은 함수의 인자로 전달된 값을 일괄적으로 사용합니다.
 근거   : mhctools/sample.py:87, mhctools/netcleave.py:461
 
-라벨: 
-메모: 
+라벨: useful
+메모: 동일 명 함수가 sample_name 을 결정하는 방식(dict key 사용 vs 외부 인자 일괄)이 반대. 결과 데이터의 grouping 이 달라지는 실제 동작 차이
 
 ==============================================================================
 [05] confidence 0.9  (유사도 0.9602)
@@ -70,8 +70,8 @@
 확인사실: mhctools/netmhcii_pan.py의 초기화 함수는 mode를 'binding_affinity'로 고정하여 부모 클래스를 호출하는 반면, mhctools/netmhc_pan41.py의 초기화 함수는 'elution_score'를 사용하고 있습니다. 두 함수 모두 유사한 구조로 래퍼 역할을 수행하지만 기본 예측 모드 설정이 서로 다릅니다.
 근거   : mhctools/netmhcii_pan.py:305, mhctools/netmhc_pan41.py:94
 
-라벨: 
-메모: 
+라벨: ambiguous
+메모: [01][03]과 같은 mode 기본값 패턴 3번째 출현. 같은 근본 질문의 반복
 
 ==============================================================================
 [06] confidence 0.9  (유사도 0.9596)
@@ -84,8 +84,8 @@
 확인사실: 두 함수 모두 출력 예시에서 '<=SB', '<=WB'와 같은 선택적 지표가 행 끝에 포함될 수 있음을 보여줍니다(824행, 973행 등). 하지만 parse_netmhciipan43_stdout은 이를 처리하기 위해 ignored_value_indices를 명시적으로 정의하여 parse_stdout에 전달하는 반면, parse_netmhciipan_stdout은 이 설정을 생략하고 있습니다.
 근거   : mhctools/parsing.py:951, mhctools/parsing.py:1015
 
-라벨: 
-메모: 
+라벨: useful
+메모: 43 버전은 ignored_value_indices 로 <=WB/<=SB 표기를 걸러내고 이전 버전은 안 걸러냄. 출력 파싱이 실제로 다를 수 있는 잠재 버그
 
 ==============================================================================
 [07] confidence 0.9  (유사도 0.9596)
@@ -98,5 +98,5 @@
 확인사실: parse_netmhcpan3_stdout(400행)은 Aff(nM) 컬럼을 항상 추출하도록 설정되어 있으나, parse_netmhcpan41_stdout(484행)은 mode가 'elution_score'일 경우 ic50_index를 None으로 설정합니다. 4.1 버전의 docstring(460행) 예시를 보면 해당 모드에서도 Aff(nM) 컬럼이 15번 인덱스에 존재하는 것으로 확인됩니다.
 근거   : mhctools/parsing.py:450, mhctools/parsing.py:484
 
-라벨: 
-메모: 
+라벨: useful
+메모: elution_score 모드에서도 Aff(nM) 컬럼이 있는데 ic50_index=None 으로 데이터 버림. 의도된 무시인지 파싱 누락인지 확인 필요
