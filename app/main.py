@@ -33,15 +33,26 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 # 23절 Landing 의 예제 저장소. 클릭하면 미리 분석해 둔 결과를 바로 연다.
 # 매번 새로 돌리면 후보 100쌍 x 요청 간격 7초 = 10분이 넘어 시연에 쓸 수 없다.
 EXAMPLES = [
-    {"slug": "mhctools", "dir": "openvax__mhctools",
+    {"slug": "mhctools", "dir": "openvax__mhctools", "lang": "Python",
      "name": "openvax/mhctools", "url": "https://github.com/openvax/mhctools",
      "note": "같은 기능을 여러 파일이 제각각 구현한 저장소입니다"},
-    {"slug": "cachecontrol", "dir": "psf__cachecontrol",
+    {"slug": "gson", "dir": "google__gson", "lang": "Java",
+     "name": "google/gson", "url": "https://github.com/google/gson",
+     "note": "JSON을 쓰는 자리마다 이스케이프와 null 처리가 갈립니다"},
+    {"slug": "axios", "dir": "axios__axios", "lang": "JavaScript",
+     "name": "axios/axios", "url": "https://github.com/axios/axios",
+     "note": "헤더를 검증하는 두 곳이 서로 다른 문자셋을 씁니다"},
+    {"slug": "serilog", "dir": "serilog__serilog", "lang": "C#",
+     "name": "serilog/serilog", "url": "https://github.com/serilog/serilog",
+     "note": "정적 Log와 인스턴스 Logger의 인자 처리가 다릅니다"},
+    {"slug": "cjson", "dir": "DaveGamble__cJSON", "lang": "C",
+     "name": "DaveGamble/cJSON", "url": "https://github.com/DaveGamble/cJSON",
+     "note": "배열 인덱스를 다루는 두 함수가 NULL을 다르게 봅니다"},
+    {"slug": "cachecontrol", "dir": "psf__cachecontrol", "lang": "Python",
      "name": "psf/cachecontrol", "url": "https://github.com/psf/cachecontrol",
      "note": "규모가 작아 결과를 훑어보기 좋습니다"},
-    {"slug": "requests", "dir": "psf__requests",
-     "name": "psf/requests", "url": "https://github.com/psf/requests",
-     "note": "많이 쓰이는 라이브러리라 코드가 익숙합니다"},
+    # psf/requests 는 뺐다. Python 예제가 셋이라 중복이고, 언어를 하나라도 더
+    # 보여주는 편이 낫다. 되살리려면 dir="psf__requests" 로 이 항목을 다시 넣으면 된다.
 ]
 
 # 웹에서 새 저장소를 분석할 때의 상한. 요청 간격이 7초라 이보다 크면 화면에서 너무 오래 기다린다.

@@ -887,6 +887,92 @@ PHASE 14 배포 완료 (9/17) 됐나?
   데모 저장소를 고를 때 이 특성을 고려해야 한다 (PHASE 16 데모 저장소 조건)
 - **`test_map` 은 facade 패턴에서 false negative 를 낸다 (9/14 mhctools 스모크 결과).** mhctools 는 `__init__.py` 에서 `NetMHCpan` 등을 re-export 하는 구조인데, 테스트는 `from mhctools import NetMHCpan` 로 씀. test_map 이 import 경로 기반 매칭이라 `netmhc_pan.py` 는 놓치고 `__init__.py` 만 연결됨. 21개 미연결 중 **16개(76%)가 실제로는 `tests/test_*.py` 가 존재**. 원 설계는 이 한계를 인지해 "**직접 연결된 근거를 찾지 못했다**" 문구를 쓰므로 표현은 안전. 다만 실무 저장소가 facade 를 흔히 쓰므로 PHASE 6·7 report 에서 이 한계를 명시적으로 언급하거나, `__init__.py` 의 re-export 를 역추적하는 개선을 고려. **진짜 테스트 없음은 5개** (`common.py`, `netmhc3.py`, `netmhc4.py`, `cleanup_context.py`, `input_file_formats.py`) — mhctools 실질 test coverage 는 68/73 (93%)
 
+### 다국어 지원 — Java · C · C# · C++ · JS · TS · HTML (9/17)
+
+`judge/languages.py` 신설. 언어별 규칙(확장자 · 함수 노드 타입 · 테스트 파일 규칙 · 제외 경로)을 한 곳에 모았다. 새 의존성 `tree-sitter-language-pack==1.20.0` (문법을 한 휠에 담고 있어 언어별 패키지 7개를 따로 관리하지 않아도 된다).
+
+- **Python 은 기존 `ast` 경로를 그대로 둔다.** PHASE 1 에서 6/6 으로 검증한 경로라 같이 흔들 이유가 없다. 나머지 언어만 tree-sitter 로 읽는다
+- **함수 노드 타입은 추측하지 않고 각 문법으로 직접 파싱해 확인했다**: Java `method_declaration`·`constructor_declaration` / C·C++ `function_definition` / C# + `local_function_statement` / JS·TS `function_declaration`·`method_definition`·`arrow_function`
+- **쌍은 같은 언어끼리만 만든다** (`judge/embed.similar_pairs`). Java 메서드와 Python 함수를 비교하면 답이 없는 질문이 된다
+- **이름 없는 화살표 함수는 제외한다.** `arr.map(x => x * 2)` 같은 콜백은 "어디를 물어볼지" 가리킬 수 없다
+- **HTML 은 함수가 없어 질문 생성 대상이 아니다.** 언어 구성 집계와 자주 바뀐 파일(git 기반)에는 들어간다
+
+**실측 (2026-09-17)**
+
+| 저장소 | 언어 | 함수 | 필터 통과 | 후보 |
+|---|---|---|---|---|
+| axios/axios | JavaScript 83% / TS 12% | 1,196 | 298 | 28쌍 |
+| google/gson | Java 96% | 2,000(상한) | 618 | 100쌍 |
+| openvax/mhctools | Python | 1,814 | 631 | 97쌍 |
+
+- **회귀 0건**: mhctools 후보 97쌍이 변경 전과 완전히 동일. 임베딩 캐시가 그대로 재사용됐다(캐시 키가 `file:line:name` 이므로 함수 목록이 바이트 단위로 같다는 뜻)
+- gson Java 쌍을 실제로 LLM 판정까지 돌려 모델이 Java 를 정확히 읽는 것을 확인했다 (두 빌더 메서드의 필드명과 null 검증 로직을 짚어 SKIP)
+
+**언어별 검증 현황 (9/17, 커버리지 감사로 재점검)**
+
+"빨리 끝나서 정말 된 게 맞나" 를 확인하려고 전 저장소 추출 커버리지를 감사했고, **버그 2개를 더 찾았다.**
+
+| 언어 | 실저장소 추출 | LLM 판정 | 이름 해석률 | 비고 |
+|---|---|---|---|---|
+| Python | ✅ mhctools 1,814함수 | ✅ (기존 검증) | - | `ast` 경로 유지. 회귀 0건 |
+| Java | ✅ gson 3,479함수 | ✅ 15쌍 / 7건 | **100%** | |
+| C# | ✅ serilog 1,538함수 | ✅ 10쌍 / 2건 | **100%** | |
+| JavaScript | ✅ axios 1,175 · django 173 | ✅ 15쌍 / 2건 | 31.5% | 익명 콜백은 설계상 제외 |
+| TypeScript | ✅ axios 115 · zustand 75 | ✅ (axios 에 포함) | 41.5% | 위와 같음 |
+| TSX | ✅ zustand 369함수 | 미판정 | - | 함수 0개 파일 0% 로 가장 깨끗 |
+| C | ✅ cJSON 1,041함수 | ✅ 8쌍 / 2건 | - | 매크로 래퍼(`CJSON_PUBLIC(...)`) 통과 |
+| C++ | ✅ spdlog 2,208함수 | 미판정 | - | |
+| HTML | 해당 없음 | 해당 없음 | - | 함수가 없어 집계만 |
+
+**모든 언어 · 모든 저장소에서 파싱 예외 0건.**
+
+**감사로 찾은 버그 2개**
+
+1. **JS/TS 에서 `function_expression` 을 빠뜨렸다.** `module.exports = function (grunt) {}`, `var f = function () {}` 같은 CommonJS 스타일이 통째로 사라지고 있었다. django JS 에서만 176개를 놓쳤다. 고친 뒤 django JS 함수가 57 → 173개(3배)로 늘었다. `generator_function_declaration` 도 같이 추가
+2. **`.h` 를 무조건 C 로 보고 있었다.** spdlog 처럼 헤더로만 이뤄진 C++ 라이브러리에서 C++ 코드 1,015개가 "C" 로 집계됐다. 저장소에 C++ 파일이 하나라도 있으면 `.h` 도 C++ 로 보도록 고쳤다(`languages.header_language`). 순수 C 인 cJSON 은 그대로 C 로 남는다. 고친 뒤 spdlog 함수가 1,117 → 2,208개
+   - 두 수정 뒤에도 **mhctools Python 회귀는 다시 0건** (후보 97쌍 그대로)
+
+**알고 있는 한계**
+
+- **JS/TS 이름 해석률 31~41%.** 나머지는 `$.each(fields, function (i, f) {...})` 같은 익명 콜백이다. 이름이 없으면 "이 함수를 왜 이렇게 했는지" 를 가리킬 수 없어 버린다. 의도한 동작이지 버그가 아니다
+- **TSX · C++ 는 LLM 판정까지는 안 돌렸다.** 추출 · 후보 생성 · 보고서까지만 확인했다. 하루 할당량(모델당 20회) 때문에 우선순위가 낮은 둘을 남겼다
+- **serilog 는 상위 후보가 로그 레벨 오버로드 묶음**(`Error` ↔ `Fatal`, 유사도 0.9698)이다. 복붙 차단선 `MAX_SIMILARITY=0.97` 바로 밑을 통과한다. LLM 이 7건을 SKIP 해 대부분 걸러냈다. C# 처럼 오버로드가 많은 언어에서는 이 상한을 낮추는 것을 검토할 것
+
+**다국어 데모 데이터 (9/17, 랜딩 예제에 추가)**
+
+실제 LLM 판정까지 돌려 결과를 저장해 뒀다. `/examples/{slug}` 가 이 결과를 바로 연다(2~10초).
+
+| 예제 | 언어 | 판정 | finding | SKIP | 오류 |
+|---|---|---|---|---|---|
+| google/gson | Java | 15쌍 | **7건** | 8 | 0 |
+| axios/axios | JavaScript | 15쌍 | 2건 | 13 | 0 |
+| serilog/serilog | C# | 10쌍 | 2건 | 7 | 0 |
+| DaveGamble/cJSON | C | 8쌍 | 2건 | 6 | 0 |
+
+- **세 언어 모두 API 오류 0건.** 모델이 각 언어를 정확히 읽는다
+- gson 이 데모용으로 가장 좋다. 이스케이프 처리 차이 · 검증 누락 · null 처리 비대칭 등 실제로 물어볼 질문이 나온다
+- axios finding 2건은 낮아 보이지만 잘 관리된 라이브러리라 정직한 결과다
+- **serilog 는 상위 후보가 로그 레벨 오버로드 묶음(`Error` ↔ `Fatal`, 유사도 0.9698)이다.** 복붙 차단선 `MAX_SIMILARITY=0.97` 바로 밑을 통과한다. LLM 이 7건을 SKIP 해 대부분 걸러내긴 했다. C# 처럼 오버로드가 많은 언어에서는 이 상한을 낮추는 것을 검토할 것
+- **하루 토큰 사용량**: 50회 (모델 상태 확인 5 + gson 14 + axios 15 + serilog 8 + cJSON 8). 모델당 20회 한도라 소진된 모델을 건너뛰고 `--model=` 로 살아 있는 모델부터 시작해 헛호출을 아꼈다
+
+**보고서 목차 번호를 실제 출력 순서대로 매긴다 (9/17)**
+
+19절이 "결과 0건인 섹션은 숨긴다"고 정했는데 번호가 고정이라 `## 1` 다음에 `## 4` 가 나왔다. 비Python 저장소는 3·5·6 이 항상 비어서 특히 눈에 띈다. 제목은 19절 그대로 두고 번호만 다시 매긴다. Python 저장소는 전 섹션이 나오므로 1~7 그대로다.
+
+**아직 Python 전용인 것 (리포트에 명시함)**
+
+- **Dead-code (16.2)**: vulture 가 Python 전용이다. 다른 언어는 실용적인 대체 도구가 없다
+- **Test evidence gap (16.3)**: `ast` 로 테스트의 import 를 역추적하는 방식이라 Python 만 된다
+- Python 이 없는 저장소에서는 이 두 값이 0으로 나오는데, **"문제가 없다" 가 아니라 "볼 도구가 없다"** 라고 리포트와 화면에 적는다. 안 적으면 "테스트가 다 있다" 로 읽힌다
+- High-Churn(16.1)은 git 이력 기반이라 처음부터 언어 무관이다
+
+**같이 고친 것**
+
+- `commit_counts()` 가 `.py` 만 세고 있었다. 그대로 두면 Java · TS 파일이 전부 커밋 수 0이 되어, 2,000개 상한에 걸릴 때 손이 자주 닿은 코드가 아니라 경로 이름 순으로 남는다
+- `is_test_file` 판단이 3개 파일에 흩어져 있던 것을 `judge/languages.py` 한 곳으로 모았다 (PHASE 12 자기참조 분석이 찾아낸 불일치)
+- `.d.cts` · `.d.mts` 제외 추가. axios 에서 `index.d.cts` 가 "자주 바뀐 파일" 1위로 올라왔는데 선언만 있는 파일이다
+- 언어 구성 분모에서 문서 · 설정 · 이미지를 뺐다. 빼기 전에는 axios 가 "기타 45.8%" 로 나와 코드 절반을 못 본 것처럼 읽혔다 (실제로는 전부 md · json)
+
 ## Known Problems
 
 - **⚠ 웹을 `uvicorn app.main:app --reload` 로 띄우면 처음 보는 저장소 분석이 100% 실패한다 (9/17 원인 규명).**

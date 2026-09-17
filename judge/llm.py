@@ -115,12 +115,15 @@ def numbered_source(clone_path: Path, side: dict) -> str:
 
 def build_prompt(clone_path: Path, pair: dict) -> str:
     a, b = pair["a"], pair["b"]
+    # 언어를 알려주지 않으면 모델이 문법을 오해한다. C# 의 `=>` 를 화살표 함수로 읽는 식이다.
+    # 쌍은 항상 같은 언어끼리만 만들어지므로(judge/embed.similar_pairs) 하나면 된다.
+    fence = pair.get("lang", "python")
     return (
         f"{PROMPT}\n"
         f"--- 함수 A ---\n파일: {a['file']}\n함수명: {a['name']}\n"
-        f"```python\n{numbered_source(clone_path, a)}\n```\n\n"
+        f"```{fence}\n{numbered_source(clone_path, a)}\n```\n\n"
         f"--- 함수 B ---\n파일: {b['file']}\n함수명: {b['name']}\n"
-        f"```python\n{numbered_source(clone_path, b)}\n```\n"
+        f"```{fence}\n{numbered_source(clone_path, b)}\n```\n"
     )
 
 

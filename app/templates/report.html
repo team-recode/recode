@@ -73,6 +73,32 @@
   {% endfor %}
 </div>
 
+{# 결과가 얇을 때 "확인할 게 없어서"인지 "그 언어를 안 봐서"인지 구분해 준다. #}
+{% if d.languages %}
+{% set shown = d.languages | selectattr("percent", "ge", 1.0) | list %}
+{% set skipped = shown | rejectattr("analyzed") | map(attribute="label") | list %}
+{% if shown %}
+<div class="rise mt-4 rounded-xl px-4 py-3.5" style="animation-delay:.07s; background:var(--surface); border:1px solid var(--line-soft)">
+  <div class="flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px]">
+    <span class="kicker text-[11px] font-bold uppercase" style="color:var(--accent-ink)">언어 구성</span>
+    {% for row in shown[:6] %}
+    <span class="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1"
+          style="{% if row.analyzed %}background:var(--accent-bg); color:var(--accent-ink){% else %}background:var(--line-soft); color:var(--muted){% endif %}">
+      {{ row.label }} <span class="mono">{{ row.percent }}%</span>
+      {% if not row.analyzed %}<span class="text-[11px]">미분석</span>{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+  {% if skipped %}
+  <p class="mt-2.5 text-[12px] leading-[1.75] body-t" style="word-break:keep-all">
+    {{ skipped | join(', ') }} 파일에서는 질문을 만들지 않았습니다. 함수 단위로 비교할 수 있는 언어만 대상입니다.
+    아래 <strong class="font-semibold">자주 바뀐 파일</strong>은 변경 이력 기반이라 언어를 가리지 않습니다.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+
 {# 23절: 화면의 주인공. 제목 / 물어볼 질문 / 확인된 사실 / 근거 를 모두 노출한다. #}
 <section class="rise mt-14" style="animation-delay:.1s">
   <div class="flex items-center gap-4">

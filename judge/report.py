@@ -15,6 +15,7 @@ analyzer/(③④⑥ 정적 evidence)와 judge/llm.py(①② finding)를 합쳐 �
     py -m judge.report <clone> <findings.json> --out=HANDOFF.md
 """
 
+import itertools
 import json
 import sys
 from collections import defaultdict
@@ -23,6 +24,7 @@ from pathlib import Path
 from analyzer.collect import CollectError, _git
 from analyzer.static_check import dead_code, high_churn
 from analyzer.test_map import is_test_file, test_evidence_gap
+from judge import languages
 
 MAX_QUESTIONS = 10          # 19절: 질문은 최대 5~10개
 MAX_FIRST_WEEK = 3          # 19절: 첫 주 할 일은 최대 3개
@@ -107,6 +109,8 @@ def gather_evidence(clone_path: Path, findings: list[dict]) -> dict:
 
     return {
         "overview": _overview(clone_path),
+        # 결과가 얇을 때 "확인할 게 없어서"인지 "그 언어를 안 봐서"인지 구분해 준다.
+        "languages": languages.composition(clone_path),
         "churn": churn,
         "dead": dead,
         "gaps": gaps,
@@ -116,6 +120,34 @@ def gather_evidence(clone_path: Path, findings: list[dict]) -> dict:
         "max_rows": MAX_LIST_ROWS,
         "max_questions": MAX_QUESTIONS,
     }
+
+
+def language_lines(rows: list[dict]) -> list[str]:
+    """저장소의 언어 구성. 무엇을 봤고 무엇을 안 봤는지 밝힌다.
+
+    이게 없으면 Python 60% / TypeScript 40% 저장소에서 질문이 적게 나왔을 때
+    "물어볼 게 없는 저장소" 로 읽힌다. 실제로는 절반만 본 것이다.
+    """
+    if not rows:
+        return []
+
+    shown = [r for r in rows if r["percent"] >= 1.0][:6]
+    if not shown:
+        return []
+
+    out = ["### 언어 구성", "",
+           "| 언어 | 파일 | 비중 | 질문 생성 |", "|---|---|---|---|"]
+    out += [f"| {r['label']} | {r['files']} | {r['percent']}% | "
+            f"{'O' if r['analyzed'] else '-'} |" for r in shown]
+
+    skipped = [r["label"] for r in shown if not r["analyzed"]]
+    out += [""]
+    if skipped:
+        out += [f"{', '.join(skipped)} 파일에서는 질문을 만들지 않았다. "
+                "함수 단위 비교가 되는 언어만 대상으로 한다.",
+                "아래 '자주 바뀐 영역' 은 git 이력 기반이라 언어를 가리지 않는다.", ""]
+
+    return out
 
 
 def quota_lines(quota: dict) -> list[str]:
@@ -151,6 +183,14 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
     grouped, combined = data["findings"], data["before_you_touch"]
     combined_files = {row["file"] for row in combined}
 
+    # 19절: 결과 0건인 섹션은 숨긴다. 그런데 번호를 고정해 두면 숨긴 자리가 그대로 비어
+    # "## 1" 다음에 "## 4" 가 나온다. 비Python 저장소는 3·5·6 이 항상 비어서 특히 눈에 띈다.
+    # 제목은 19절이 정한 그대로 두고 번호만 실제로 출력되는 순서대로 다시 매긴다.
+    section = itertools.count(1)
+
+    def heading(title: str) -> str:
+        return f"## {next(section)}. {title}"
+
     out = ["# Re:Code Handoff", ""]
     out += [f"> `{overview['name']}` · {overview['branch']} · "
             f"`{overview['head_sha']}` · 커밋 {overview['commit_count']}개", ""]
@@ -161,14 +201,15 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
     if quota:
         out += quota_lines(quota)
 
-    out += ["## 1. Repository overview", "",
+    out += [heading("Repository overview"), "",
             f"- 저장소: `{overview['name']}`",
             f"- 기준 커밋: `{overview['head_sha']}` (`{overview['branch']}`)",
             f"- 전체 커밋: {overview['commit_count']}개", ""]
+    out += language_lines(data["languages"])
 
     # 2. Before you touch this repo — 가장 강한 조합만. 나머지 섹션과 중복시키지 않는다.
     if combined:
-        out += ["## 2. Before you touch this repo", ""]
+        out += [heading("Before you touch this repo"), ""]
         for i, row in enumerate(combined, 1):
             out += [f"### {i}. `{row['file']}`", "",
                     "Evidence:",
@@ -181,7 +222,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
 
     # 3. Questions — ①② finding
     if grouped:
-        out += ["## 3. Questions for the previous developer", ""]
+        out += [heading("Questions for the previous developer"), ""]
         if quota:
             # 목록 바로 위에서 한 번 더 짚는다. 위 안내를 지나친 채 개수만 보는 사람이 있다.
             out += [f"*사용량 소진으로 후보 {quota['skipped']}쌍을 판정하지 못했다. "
@@ -199,7 +240,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
     # 4. High-change areas — 2번에 이미 나온 파일은 뺀다(근거 중복 금지)
     rest_churn = [r for r in churn if r["file"] not in combined_files]
     if rest_churn:
-        out += ["## 4. High-change areas", "",
+        out += [heading("High-change areas"), "",
                 "최근 60일간 반복적으로 변경된 영역이다. 변경 횟수는 git 이력에서 센 수치다.", "",
                 "| 파일 | 60일 변경 | 마지막 변경 |", "|---|---|---|"]
         out += [f"| `{r['file']}` | {r['commits_60d']} | {r['last_changed']} |"
@@ -211,7 +252,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
     # 5. Test evidence gaps — 2번에 이미 나온 파일은 뺀다
     rest_gaps = [r for r in gaps if r["file"] not in combined_files]
     if rest_gaps:
-        out += ["## 5. Test evidence gaps", "",
+        out += [heading("Test evidence gaps"), "",
                 f"{rest_gaps[0]['message']} 테스트가 없다는 뜻은 아니다.", "",
                 "| 파일 | 전체 커밋 |", "|---|---|"]
         out += [f"| `{r['file']}` | {r['commit_count']} |" for r in rest_gaps[:MAX_LIST_ROWS]]
@@ -221,7 +262,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
 
     # 6. Dead-code candidates — 삭제 권고가 아니라 확인 후보다
     if dead:
-        out += ["## 6. Dead-code candidates", "",
+        out += [heading("Dead-code candidates"), "",
                 f"{dead[0]['message']} 삭제를 권하는 것이 아니라 확인이 필요한 후보다.", "",
                 "| 위치 | 이름 | 종류 | confidence |", "|---|---|---|---|"]
         out += [f"| `{d['file']}:{d['line']}` | `{d['name']}` | {d['kind']} | {d['confidence']}% |"
@@ -233,7 +274,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
     # 7. First week — 19절 우선순위. gather_evidence 가 이미 3개로 잘라 준다.
     week = data["first_week"]
     if week:
-        out += ["## 7. First week", ""]
+        out += [heading("First week"), ""]
         out += [f"{i}. {item}" for i, item in enumerate(week, 1)]
         out += [""]
 

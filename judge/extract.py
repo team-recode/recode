@@ -1,4 +1,4 @@
-"""PHASE 3 — Python 파일에서 분석 가능한 함수 단위를 추출한다(15절).
+"""PHASE 3 — 소스 파일에서 분석 가능한 함수 단위를 추출한다(15절).
 
 PHASE 5(임베딩 후보 축소)에 넘길 표준 포맷을 만든다.
 커밋 빈도가 높은 파일부터 처리하므로, 상한에 걸려 잘리더라도
@@ -16,24 +16,20 @@ from pathlib import Path
 
 from analyzer.collect import CollectError
 from analyzer.test_map import commit_counts
+from judge import languages
 
-# 원저자의 손이 닿지 않는 코드는 인수인계 질문의 대상이 아니다.
-EXCLUDE_DIRS = {
-    ".git", ".venv", "venv", "node_modules", "__pycache__",
-    "build", "dist", "vendor", "third_party", ".tox", ".mypy_cache",
-    "site-packages", "migrations",
-}
+# 언어별 규칙은 judge/languages.py 한 곳에서 관리한다.
+# 예전에는 파일마다 제각각 판단해서 같은 파일을 어떤 데서는 테스트로, 어떤 데서는
+# 아니라고 봤다(PHASE 12 자기참조 분석에서 실제로 걸린 문제다).
+EXCLUDE_DIRS = languages.EXCLUDE_DIRS
 
 # 15절 상한. 초과하면 commit 빈도 높은 파일부터 남긴다.
 MAX_FUNCTIONS = 2000
 
 
 def is_test_file(rel_path: Path) -> bool:
-    """tests/ 아래이거나 test_*.py / *_test.py 이면 테스트 파일로 본다."""
-    name = rel_path.name
-    if name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py":
-        return True
-    return any(part in ("test", "tests") for part in rel_path.parts[:-1])
+    """테스트 파일 판별. 언어마다 규칙이 다르므로 languages 에 맡긴다."""
+    return languages.is_test_file(rel_path)
 
 
 def signature_of(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
@@ -48,8 +44,20 @@ def signature_of(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
 def iter_python_files(clone_path: Path):
     """분석 대상 .py 파일을 돌려준다."""
     for path in clone_path.rglob("*.py"):
-        if EXCLUDE_DIRS.isdisjoint(path.relative_to(clone_path).parts):
+        if not languages.is_excluded(path.relative_to(clone_path).as_posix()):
             yield path
+
+
+def body_statements(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """본문 문장 수. 독스트링은 빼고 중첩까지 센다.
+
+    최상위만 세면 "for 루프 하나로 된 20줄 함수"가 "return self._x" 와 같은 1개로 잡혀
+    실제 후보가 통째로 걸러진다. PHASE 5 에서 겪은 문제다.
+    """
+    body = node.body
+    if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)             and isinstance(body[0].value.value, str):
+        body = body[1:]
+    return sum(len([n for n in ast.walk(stmt) if isinstance(n, ast.stmt)]) for stmt in body)
 
 
 def extract_file(path: Path, rel: str, commit_count: int) -> list[dict]:
@@ -78,6 +86,8 @@ def extract_file(path: Path, rel: str, commit_count: int) -> list[dict]:
             "commit_count": commit_count,
             # 15절: 테스트 파일도 추출은 하되 임베딩 후보에서는 필요에 따라 제외한다.
             "is_test": is_test,
+            "lang": "python",
+            "body_statements": body_statements(node),
         })
     return out
 
@@ -89,19 +99,30 @@ def extract(clone_path: Path, max_functions: int = MAX_FUNCTIONS,
         raise CollectError(f"git 저장소가 아닙니다: {clone_path}")
 
     counts = commit_counts(clone_path)
-    files = [(p, p.relative_to(clone_path).as_posix()) for p in iter_python_files(clone_path)]
+    files = [(p, rel, lang) for p, rel, lang in languages.iter_source_files(clone_path)
+             if lang.analyzable]
     if not include_tests:
-        files = [(p, rel) for p, rel in files if not is_test_file(Path(rel))]
+        files = [fr for fr in files if not is_test_file(Path(fr[1]))]
 
     # 커밋이 잦은 파일부터 처리한다. 상한에 걸려도 손이 자주 닿은 코드가 남는다.
     files.sort(key=lambda fr: (-counts.get(fr[1], 0), fr[1]))
 
     functions = []
-    for path, rel in files:
+    for path, rel, lang in files:
         # 파일 단위로 자른다. 한 파일의 함수가 반만 남는 상황을 만들지 않는다.
         if len(functions) >= max_functions:
             break
-        functions.extend(extract_file(path, rel, counts.get(rel, 0)))
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if lang.grammar is None:
+            functions.extend(extract_file(path, rel, counts.get(rel, 0)))
+        else:
+            try:
+                functions.extend(
+                    languages.extract_functions(text, rel, lang, counts.get(rel, 0)))
+            except Exception:                 # noqa: BLE001
+                # 문법이 파일 하나를 못 읽어도 저장소 전체 분석을 멈추지 않는다.
+                # 근거로 쓸 수 없는 파일이니 조용히 건너뛴다. Python 쪽 SyntaxError 처리와 같다.
+                continue
 
     return functions[:max_functions]
 
