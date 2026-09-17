@@ -85,8 +85,13 @@ BY_EXT = {ext: lang for lang in LANGUAGES for ext in lang.exts}
 # 함수 쌍 비교가 가능한 언어. 리포트 문구에서도 쓴다.
 ANALYZABLE = [lang for lang in LANGUAGES if lang.analyzable]
 
-# 테스트 파일이 들어 있는 흔한 디렉터리 이름.
-TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "testing"}
+# production 코드가 아닌 파일이 들어 있는 흔한 디렉터리 이름.
+# 스토리북 스토리·예제·목업은 "일부러 다르게 만든" 코드라 서로 비교하면
+# `PopoverNonModal` 과 `PopoverFullyModal` 의 차이를 묻는 무의미한 질문이 나온다
+# (radix-ui/primitives 실측: 후보 200개 중 99개가 stories 파일이었다).
+# 다음 개발자가 실제로 고칠 코드만 대상으로 한다.
+TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "testing",
+             "stories", "storybook", "__mocks__", "__fixtures__", "fixtures", "mocks"}
 
 # 언어별 테스트 파일 이름 규칙. Java 의 `FooTest.java`, JS 의 `foo.spec.ts` 처럼 제각각이다.
 TEST_NAME_RE = re.compile(
@@ -96,6 +101,7 @@ TEST_NAME_RE = re.compile(
     r"|Tests?\.(java|cs|kt)$"        # FooTest.java, FooTests.cs
     r"|^Test[A-Z]"                   # TestFoo.java
     r"|\.(test|spec)\.[a-z]+$"       # foo.test.ts, foo.spec.js
+    r"|\.(stories|story)\.[a-z]+$"   # foo.stories.tsx  (스토리북 예제)
     r")", re.IGNORECASE)
 
 
