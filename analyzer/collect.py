@@ -56,6 +56,17 @@ def _git(args: list[str], cwd: Path | None = None, timeout: int = 30) -> str:
         raise CollectError(f"git {args[0]} 명령이 {timeout}초를 넘겨 중단했습니다.")
 
     if result.returncode != 0:
+        # 0xC000013A = STATUS_CONTROL_C_EXIT. git 이 스스로 실패한 게 아니라
+        # 부모 콘솔이 CTRL_C 를 뿌려서 죽은 것이다. 웹에서는 거의 항상 원인이 하나다:
+        # `uvicorn --reload` 가 repos/ 에 새로 생긴 .py 를 소스 변경으로 보고 서버를 재시작했다.
+        # 그냥 "git 실패"로 두면 원인을 찾는 데 한참 걸린다. 겪어봤다.
+        if result.returncode == 3221225786:
+            raise CollectError(
+                f"git {args[0]} 이 외부 종료 신호로 중단됐습니다 (exit {result.returncode}).\n"
+                "웹에서 이 오류가 났다면 `uvicorn --reload` 로 띄운 것이 원인입니다. "
+                "클론이 repos/ 에 .py 를 만들면 리로더가 서버를 재시작하면서 git 을 죽입니다.\n"
+                "--reload 없이 실행하세요: python -m uvicorn app.main:app --port 8000"
+            )
         raise CollectError(
             f"git {args[0]} 실패 (exit {result.returncode})\n{result.stderr.strip()}"
         )

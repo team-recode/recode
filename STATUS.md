@@ -9,6 +9,7 @@
 - `pip install -r requirements.txt` 완료 후 `pip freeze`로 락 커밋 · push
 - Docker Desktop `postgres:16` 컨테이너 healthy 확인, `psql`로 접속 검증
 - `uvicorn app.main:app --reload` → `http://localhost:8000` 에서 `{"status":"ok"}` 응답 확인
+  - ⚠ 9/17 정정: **`--reload` 는 쓰지 말 것.** 클론이 리로더를 깨워 분석이 죽는다. Known Problems 최상단 참조
 - GitHub PAT 발급, `.env` 로컬 작성 (`GITHUB_TOKEN`, `GEMINI_API_KEY`, `DATABASE_URL`)
 - `git config --global core.autocrlf true`
 - GitHub 저장소 `team-recode/recode` 생성, 초기 커밋 및 락 커밋 push
@@ -888,6 +889,14 @@ PHASE 14 배포 완료 (9/17) 됐나?
 
 ## Known Problems
 
+- **⚠ 웹을 `uvicorn app.main:app --reload` 로 띄우면 처음 보는 저장소 분석이 100% 실패한다 (9/17 원인 규명).**
+  - 증상: 분석 중에 홈으로 이동이 안 되고, job 이 `CollectError: git rev-parse 실패 (exit 3221225786)` 로 죽는다
+  - 원인: `--reload` 의 watchfiles 가 프로젝트 트리 전체에서 `*.py` 변경을 감시한다. `git clone` 이 `repos/` 에 `.py` 를 쏟아내면 리로더가 이를 소스 변경으로 보고 서버를 재시작한다. 그때 백그라운드에서 돌던 `git` 서브프로세스가 콘솔 CTRL_C 를 받고 죽는다 (`3221225786` = `0xC000013A` = `STATUS_CONTROL_C_EXIT`). 브라우저 쪽에서는 SSE 가 끊긴 채 서버가 재시작 중이라 어떤 이동도 먹히지 않는 것처럼 보인다
+  - 실측: 클론 시작 직후 서버 PID 가 23284 → 21916 으로 바뀌는 것을 확인. 이미 클론해 둔 저장소는 새 `.py` 가 안 생겨서 재시작이 없고, 그래서 예제 3개로 시연할 때는 드러나지 않았다
+  - **실행 명령 (시연 · 일반 사용)**: `.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000`
+  - **개발 중 자동 리로드가 필요하면** 감시 범위를 소스 디렉터리로 좁힌다:
+    `... --reload --reload-dir app --reload-dir judge --reload-dir analyzer`
+  - `--reload` 없이 검증: 처음 보는 저장소 클론 성공, 분석 내내 `GET /` 응답 5~150ms 유지
 - **팀 공용 키의 Gemini 무료 할당량 소진 (9/14).** 소진된 모델: `gemini-3.8-flash`, `gemini-flash-latest`, `gemini-3.6-flash`. 원인은 초기 실행에서 요청 간격 없이 25건을 연속 호출한 것. 현재 스크립트는 7초 간격 + 429시 65초 백오프 적용됨.
   - **할당량은 키(프로젝트) 단위이고, 같은 키 안에서도 모델별로 따로 걸린다.**
   - 사용자 개인 키를 새로 발급해 `.env`의 `GEMINI_API_KEY`를 교체하여 해소함. 팀원 로컬 `.env`는 그대로이므로 팀원은 리셋까지 위 모델들을 못 씀
