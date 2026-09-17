@@ -43,7 +43,19 @@ AI가 코드를 쓰는 속도는 빨라졌지만, 그 코드를 이해하는 속
 **데모 영상**: <!-- TODO(PHASE 16, 9/18~19): 2~3분 데모 영상 링크 -->
 
 **자기참조 인수인계서** — Re:Code 를 Re:Code 로 분석한 결과:
-<!-- TODO(PHASE 12, 9/17): 자기참조 HANDOFF.md 링크 -->
+[`evaluation/self_reference/HANDOFF.md`](evaluation/self_reference/HANDOFF.md)
+(분석 시점 커밋 `ac8410c`, 모델 `gemini-3.5-flash-lite`, 후보 9쌍 전수 판정, 76초, $0)
+
+**finding 5건 전부 실제 코드와 대조해 사실임을 확인했다. 억지 경고 0건.**
+그중 2건은 우리가 모르고 있던 진짜 불일치였다:
+
+1. **독스트링 정규식 범위 불일치** — `judge/embed.py` 는 `'''` 와 `"""` 를 모두 처리하는데
+   `scripts/make_samples.py` 는 `"""` 만 처리한다. 뒤에 만든 것만 고치고 앞을 안 고친 드리프트
+2. **테스트 파일 판별 규칙이 세 파일에서 서로 달랐다** — 필요할 때마다 따로 만들어
+   뒤로 갈수록 규칙이 늘었다 (2026-09-17 `judge/languages.py` 로 통합해 해소)
+
+나머지 3건 중 2건은 **의도한 설계**였다(레이어 분리, 화면 vs API 응답 차이). 질문 자체는
+타당했고 답을 듣기 전에는 알 수 없는 종류였다 — 제품 정의("답을 정하지 않고 질문을 만든다")에 부합한다.
 
 ## Architecture
 
@@ -64,13 +76,22 @@ AI가 코드를 쓰는 속도는 빨라졌지만, 그 코드를 이해하는 속
 ## Analysis pipeline
 
 1. **수집** — `git clone` + 커밋 히스토리 (GitHub API 없이 git CLI 만 사용)
-2. **함수 추출** — `ast` 로 함수 파싱. 함수 2,000개 상한 (초과 시 커밋 빈도순 절삭)
+2. **함수 추출** — Python 은 표준 `ast`, 나머지 언어는 `tree-sitter` 로 파싱
+   (Java · C · C# · C++ · JavaScript · TypeScript · TSX). 함수 2,000개 상한
+   (초과 시 커밋 빈도순 절삭). 언어 규칙은 `judge/languages.py` 한 곳에 모여 있다
 3. **정적 분석** (LLM 없이 동작하는 근거)
-   - High-Churn Hotspot — 60일간 커밋 밀집도
-   - Dead-Code Candidate — `vulture` 로 미사용 코드 탐지
-   - Test Evidence Gap — `import` 역추적으로 테스트-코드 연결 확인
+   - High-Churn Hotspot — 60일간 커밋 밀집도. git 이력 기반이라 언어를 가리지 않는다
+   - Dead-Code Candidate — Python 은 `vulture`. 나머지 언어는 **스코프 기반**으로 본다.
+     `private` 메서드 · `static` 함수 · export 하지 않은 함수는 그 파일 밖에서 부를 수 없으므로,
+     자기 파일 안에서 이름이 정의 자리 한 번만 나오면 호출되는 자리가 없다는 뜻이다.
+     공개 API 는 저장소 밖에서 불릴 수 있어 처음부터 대상에 넣지 않는다.
+     파싱이 깨진 파일로는 단정하지 않고 건너뛴다
+   - Test Evidence Gap — Python 은 `import` 역추적. 나머지 언어는 이름 규칙
+     (`FooTest.java` → `Foo.java`, `foo.spec.ts` → `foo.ts`)과 테스트가 대상 이름을
+     실제로 부르는지로 연결한다
 4. **후보 축소** — `sentence-transformers` (`all-MiniLM-L6-v2`) 로컬 임베딩. threshold 0.80. `numpy` 내적으로 cosine 유사도
-5. **LLM 판정** — Google Gemini API (`gemini-3-flash-preview`) 로 유사 쌍을 "의도적 분리인가, 맥락 상실로 인한 중복인가" 판정
+5. **LLM 판정** — Google Gemini API 로 유사 쌍을 "의도적 분리인가, 맥락 상실로 인한 중복인가" 판정.
+   모델 하나가 하루 한도를 다 쓰면 다음 모델로 자동 전환한다. 쌍은 항상 같은 언어끼리만 만들어진다
 6. **문서 생성** — 근거 파일 경로·줄 번호·커밋 링크 강제. 근거 없는 finding 은 만들지 않음
 
 **설계 결정**:
@@ -114,7 +135,25 @@ AI가 코드를 쓰는 속도는 빨라졌지만, 그 코드를 이해하는 속
 
 **전체 유용률: 68% (21/31), AI 소스 검증 baseline** — 자기평가 편향 회피를 위해 정확도 과장 없이 "내부 검증(n=31)" 으로 표기.
 
-**PHASE 13 개발자 3~5명 외부 검증** (9/17~18): <!-- TODO(PHASE 13, 9/17~18): 외부 검증 결과 반영 -->
+**PHASE 13 사용자 테스트** (2026-09-17): **팀 내부 2명 × A/B 교차 = 세션 4회.**
+저장소는 `jd/tenacity` 와 `pyeve/cerberus` 로 규모를 맞췄고(18파일 / 함수 167 vs 195),
+각자 A·B 를 한 번씩 서로 반대 저장소로 수행했다.
+
+| 항목 | A 조건 (리포트 없음) | B 조건 (리포트 있음) |
+|---|---|---|
+| 확인 지점을 찾기까지 (평균) | 7분 | **3분** |
+| 물어볼 질문 수 (합) | 4개 | **6개** |
+| 사용 의향 (평균, 1~5) | 1.0 | **5.0** |
+
+**질문 유용률 6/9 (67%)** — tenacity 2/4, cerberus 4/5. 오탐 지적 3건은 "굳이 질문하지
+않아도 알 수 있는 내용" 이었다.
+
+PHASE 9 의 AI baseline(68%)과 사람 평가(67%)가 거의 일치했다. 서로 독립적인 방법이다.
+
+**한계를 먼저 밝힌다**: 표본 2명 · 세션 4회로 25절 요구(3~5명)에 미달하고, 두 사람 모두
+도구 제작자 본인이라 **자기평가 편향**이 있다. 또한 대상 저장소는 영어, 리포트는 한글이라
+**A/B 격차에 언어 장벽이 섞여 있어 실제 도구 효과보다 부풀려져 있을 수 있다.**
+통계적 유의성은 주장하지 않는다. 원자료: [`evaluation/user_test/응답시트.md`](evaluation/user_test/응답시트.md)
 
 **대형 저장소 안정성**: django (2,000함수 상한, 후보 100쌍) 에서 **오류 0건** 완주. 21절 목표 "대형 repo 실패 여부" 확보.
 
@@ -197,9 +236,24 @@ py analyze.py https://github.com/psf/requests
 **옵션**:
 - `--skip-llm` — LLM 없이 정적 근거만으로 리포트 (quota 부담 0)
 - `--limit=N` — 후보 N개만 판정
-- `--model=이름` — Gemini 모델 지정 (`gemini-3-flash-preview` 권장)
+- `--model=이름` — 첫 모델 지정. 하루 한도(모델당 20회)를 다 쓰면 다음 모델로
+  자동 전환한다(`judge/llm.FALLBACK_MODELS`). 전부 소진되면 남은 후보를 건너뛰고
+  그때까지의 결과로 보고서를 만든다. 소진된 모델을 건너뛰려면 살아 있는 모델을 직접 지정할 것
 
-**웹 서버**: <!-- TODO(PHASE 10, 9/16): FastAPI 실행 명령 -->
+**웹 서버**:
+```bash
+py -m uvicorn app.main:app --port 8000
+# http://localhost:8000
+```
+
+> ⚠ **`--reload` 를 붙이지 말 것.** watchfiles 가 프로젝트 트리 전체에서 `*.py` 변경을
+> 감시하는데, `git clone` 이 `repos/` 에 `.py` 를 쏟아내면 이를 소스 변경으로 보고
+> 서버를 재시작한다. 그때 백그라운드의 `git` 이 콘솔 CTRL_C 를 받고 죽어서
+> **처음 보는 저장소 분석이 100% 실패한다.**
+> 개발 중 자동 리로드가 필요하면 감시 범위를 좁힌다:
+> `--reload --reload-dir app --reload-dir judge --reload-dir analyzer`
+
+DB 는 `docker-compose.yml` 의 `postgres:16` 을 쓴다. 먼저 `docker compose up -d` 로 띄울 것.
 
 ## Team
 
