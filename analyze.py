@@ -81,9 +81,16 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
         llm_sec = round(time.time() - started, 1)
         (out_dir / "findings.json").write_text(
             json.dumps(findings, ensure_ascii=False, indent=2), encoding="utf-8")
-        _done(started, f"finding {stats['keep']}건 / SKIP {stats['skip']} / "
-                       f"폐기 {stats['dropped']} / 오류 {stats['error']} "
-                       f"/ API {stats['api_calls']}회 · 캐시 {stats['cache_hits']}회")
+        detail = (f"finding {stats['keep']}건 / SKIP {stats['skip']} / "
+                  f"폐기 {stats['dropped']} / 오류 {stats['error']} "
+                  f"/ API {stats['api_calls']}회 · 캐시 {stats['cache_hits']}회")
+        used = stats.get("models_used") or []
+        if len(used) > 1:
+            # 도중에 모델이 바뀌었다면 어떤 순서로 썼는지 남긴다. 결과 해석에 필요하다.
+            detail += f" / 모델 {' -> '.join(used)}"
+        if stats.get("quota_stopped"):
+            detail += f" / 할당량 소진으로 {stats['skipped_by_quota']}쌍 건너뜀"
+        _done(started, detail)
 
     notify("static_analysis", 88)
     step = total - 1
@@ -104,6 +111,8 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
         "head_sha": meta["head_sha"],
         "commit_count": meta["commit_count"],
         "model": None if skip_llm else model,
+        # 시작 모델이 할당량으로 막히면 다른 모델로 갈아탄다. 실제로 쓴 목록을 따로 남긴다.
+        "models_used": stats.get("models_used", []),
         "threshold": threshold,
         # 21절 측정 항목 ------------------------------------------------
         "clone_time_sec": clone_sec,
@@ -125,6 +134,9 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
         "skipped": stats.get("skip", 0),
         "dropped_by_rules": stats.get("dropped", 0),
         "errors": stats.get("error", 0),
+        # 할당량 때문에 중간에 끊겼는지. 판정 수가 적은 이유를 나중에 설명할 수 있어야 한다.
+        "quota_stopped": stats.get("quota_stopped", False),
+        "skipped_by_quota": stats.get("skipped_by_quota", 0),
         # useful / ambiguous / not_useful 은 사람이 라벨링한다(21절). 여기서 채우지 않는다.
         "human_labels": None,
     })
@@ -145,7 +157,7 @@ def main() -> int:
     if len(args) != 1:
         print("사용법: py analyze.py https://github.com/owner/repo\n"
               "  --threshold=0.80   유사도 하한\n"
-              "  --model=이름       LLM 모델 (quota 소진 시 교체)\n"
+              "  --model=이름       첫 LLM 모델 (소진되면 다음 모델로 자동 교체)\n"
               "  --limit=N          후보 N개만 판정 (quota 절약)\n"
               "  --skip-llm         LLM 없이 정적 근거만으로 보고서 생성",
               file=sys.stderr)

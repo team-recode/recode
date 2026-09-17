@@ -29,14 +29,31 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 ENV_PATH = REPO_ROOT / ".env"
 CACHE_DIR = REPO_ROOT / "cache" / "llm"
 
-# gemini-3.6-flash 는 목록에서 사라졌다. 이 모델이 PHASE 1 2차 사이클에서 CASES 6/6 을 통과했다.
-# quota 는 모델별로 독립이므로 소진되면 --model= 로 교체한다.
+# quota 는 모델별로 독립이라, 앞 모델이 하루 한도를 다 쓰면 뒤 모델로 갈아탄다.
+# 순서는 판정 품질 순이다. gemini-3.6-flash 가 PHASE 1 2차 사이클에서 CASES 6/6 을 통과했다.
 DEFAULT_MODEL = "gemini-3-flash-preview"
+FALLBACK_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest",
+]
 
 RETRIES = 2            # 18절 API 실패 대응: 1~2회 재시도
 SPACING_SEC = 7        # 무료 티어 분당 요청 제한 대비 간격
-QUOTA_BACKOFF = 65     # 429는 분 단위 창이 리셋될 때까지 기다린다
 TIMEOUT_MS = 120_000   # 18절 timeout
+
+# 429 는 분 단위가 아니라 하루 단위 제한(GenerateRequestsPerDayPerProjectPerModel)이다.
+# 오래 기다려도 그 날 안에는 풀리지 않으므로 길게 버티지 않는다.
+# 응답이 알려주는 retryDelay 가 20초라 한 번만 그만큼 쉬고 넘어간다.
+QUOTA_BACKOFF = 20
+QUOTA_RETRIES = 1
+
+# 할당량 오류가 이만큼 연달아 나면 이 모델은 오늘 끝났다고 보고 다음 모델로 넘어간다.
+# 1 이 아니라 2 인 이유: 429 에는 하루 한도 말고 분당 한도도 섞여 있다. 분당 한도는
+# 잠깐 쉬면 풀리는데, 한 번에 모델을 갈아타면 멀쩡한 모델을 버리게 된다.
+# 체인의 모든 모델이 소진되면 남은 후보를 포기하고 여기까지의 결과로 보고서를 만든다.
+QUOTA_GIVE_UP = 2
 
 # 18절: 낮은 confidence는 최종 문서에서 제외 가능
 MIN_CONFIDENCE = 0.5
@@ -193,28 +210,76 @@ def ask(client, model: str, prompt: str) -> tuple[str | None, str | None, int]:
 
         if "NOT_FOUND" in last_err or "INVALID_ARGUMENT" in last_err:
             break
-        if attempt < RETRIES:
-            wait = QUOTA_BACKOFF if "RESOURCE_EXHAUSTED" in last_err else 8 * (attempt + 1)
-            print(f"       재시도 {attempt + 1}/{RETRIES}, {wait}초 대기")
+
+        quota = "RESOURCE_EXHAUSTED" in last_err
+        limit = QUOTA_RETRIES if quota else RETRIES
+        if attempt < limit:
+            wait = QUOTA_BACKOFF if quota else 8 * (attempt + 1)
+            print(f"       재시도 {attempt + 1}/{limit}, {wait}초 대기")
             time.sleep(wait)
+        else:
+            break
 
     return None, last_err, 0
 
 
+def model_chain(start: str) -> list[str]:
+    """시작 모델부터 순서대로 시도할 모델 목록. 중복은 없앤다."""
+    chain = [start]
+    chain += [m for m in FALLBACK_MODELS if m != start]
+    return chain
+
+
+def _cache_path(clone_path: Path, model: str, prompt_id: str) -> Path:
+    return CACHE_DIR / f"{clone_path.name}_{model}_{prompt_id}.json"
+
+
+def load_cache(clone_path: Path, prompt_id: str) -> dict:
+    """같은 저장소·같은 프롬프트로 받은 응답은 모델이 달라도 재사용한다.
+
+    모델을 갈아타면 캐시 파일이 갈라진다. 그때 앞 모델의 응답을 못 읽으면
+    이미 판정한 쌍을 새 모델로 다시 물어보게 되고, 아끼려던 할당량을 오히려 더 쓴다.
+    읽을 때는 모델별 파일을 전부 합치고, 쓸 때만 현재 모델 파일에 넣는다.
+    """
+    merged: dict = {}
+    for path in sorted(CACHE_DIR.glob(f"{clone_path.name}_*_{prompt_id}.json")):
+        try:
+            merged.update(json.loads(path.read_text(encoding="utf-8")))
+        except (json.JSONDecodeError, OSError):
+            continue    # 깨진 캐시 하나 때문에 분석 전체를 멈추지 않는다
+    return merged
+
+
+def save_cache(clone_path: Path, model: str, prompt_id: str, key: str, text: str) -> None:
+    """한 건 받을 때마다 바로 쓴다. 중간에 끊겨도 여기까지는 남는다."""
+    path = _cache_path(clone_path, model, prompt_id)
+    entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    entries[key] = text
+    path.write_text(json.dumps(entries, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def judge(clone_path: Path, pairs: list[dict], model: str = DEFAULT_MODEL,
           min_confidence: float = MIN_CONFIDENCE) -> tuple[list[dict], dict]:
-    """후보 쌍을 판정해 finding 목록과 집계를 돌려준다."""
+    """후보 쌍을 판정해 finding 목록과 집계를 돌려준다.
+
+    한 모델의 하루 한도가 끝나면 다음 모델로 갈아탄다(`FALLBACK_MODELS`).
+    체인의 모든 모델이 소진되면 남은 후보를 건너뛰고, 그때까지 얻은 finding 만 돌려준다.
+    분석이 통째로 실패하는 것보다 일부라도 보고서가 나오는 편이 낫다.
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     # 프롬프트가 바뀌면 이전 응답은 더 이상 유효하지 않다. 해시를 키에 넣어 자동 무효화한다.
     prompt_id = hashlib.sha1(PROMPT.encode("utf-8")).hexdigest()[:8]
-    cache_path = CACHE_DIR / f"{clone_path.name}_{model}_{prompt_id}.json"
-    cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
+    cache = load_cache(clone_path, prompt_id)
 
     client = make_client()
+    chain = model_chain(model)
+    mi = 0                      # 지금 쓰는 모델의 체인 위치
     findings, seen_questions = [], set()
     # 21절 측정용: 실제 API 호출과 캐시 히트를 구분해 센다. 토큰 수는 비용 근거가 된다.
     stats = {"keep": 0, "skip": 0, "dropped": 0, "error": 0, "low_confidence": 0,
-             "duplicate": 0, "api_calls": 0, "cache_hits": 0, "tokens": 0}
+             "duplicate": 0, "api_calls": 0, "cache_hits": 0, "tokens": 0,
+             "skipped_by_quota": 0, "quota_stopped": False, "models_used": []}
+    quota_streak = 0
 
     for i, pair in enumerate(pairs, 1):
         key = f"{pair['a']['file']}:{pair['a']['name']}|{pair['b']['file']}:{pair['b']['name']}"
@@ -222,20 +287,46 @@ def judge(clone_path: Path, pairs: list[dict], model: str = DEFAULT_MODEL,
         if key in cache:
             text = cache[key]
             stats["cache_hits"] += 1
+        elif stats["quota_stopped"]:
+            # 체인의 모든 모델이 소진됐다. 남은 후보는 호출하지 않고 넘긴다.
+            stats["skipped_by_quota"] += 1
+            continue
         else:
-            # quota 를 아끼려 간격을 둔다. PHASE 1에서 간격 없이 던져 하루치를 태운 적이 있다.
-            if stats["api_calls"]:
-                time.sleep(SPACING_SEC)
-            text, err, tokens = ask(client, model, build_prompt(clone_path, pair))
-            stats["api_calls"] += 1
-            stats["tokens"] += tokens
+            # 모델을 갈아타면 같은 쌍을 새 모델로 한 번 더 시도한다. 그래서 while 이다.
+            while True:
+                # quota 를 아끼려 간격을 둔다. PHASE 1에서 간격 없이 던져 하루치를 태운 적이 있다.
+                if stats["api_calls"]:
+                    time.sleep(SPACING_SEC)
+                current = chain[mi]
+                if current not in stats["models_used"]:
+                    stats["models_used"].append(current)
+                text, err, tokens = ask(client, current, build_prompt(clone_path, pair))
+                stats["api_calls"] += 1
+                stats["tokens"] += tokens
+
+                if not err or "RESOURCE_EXHAUSTED" not in err:
+                    quota_streak = 0
+                    break
+
+                quota_streak += 1
+                if quota_streak < QUOTA_GIVE_UP:
+                    break       # 분당 한도일 수 있다. 이 쌍은 넘기고 다음 쌍에서 다시 본다
+                if mi + 1 >= len(chain):
+                    # 쓸 수 있는 모델을 다 썼다. 여기까지의 결과로 보고서를 만든다.
+                    stats["quota_stopped"] = True
+                    print(f"  [{i:3d}] 모델 {len(chain)}개 모두 할당량 소진. "
+                          f"남은 후보를 건너뛰고 여기까지의 결과로 보고서를 만듭니다.")
+                    break
+                mi, quota_streak = mi + 1, 0
+                print(f"  [{i:3d}] {current} 할당량 소진 -> {chain[mi]} 로 전환합니다.")
+
             if err:
                 stats["error"] += 1
-                print(f"  [{i:3d}] ERROR    {err[:70]}")
+                if not stats["quota_stopped"]:
+                    print(f"  [{i:3d}] ERROR    {err[:70]}")
                 continue
             cache[key] = text
-            cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=1),
-                                  encoding="utf-8")
+            save_cache(clone_path, chain[mi], prompt_id, key, text)
 
         try:
             data = json.loads(text)
@@ -284,7 +375,10 @@ def main() -> int:
     if limit:
         pairs = pairs[:limit]
 
-    print(f"후보 {len(pairs)}쌍 / 모델 {model} / 요청 간격 {SPACING_SEC}초\n")
+    chain = model_chain(model)
+    print(f"후보 {len(pairs)}쌍 / 요청 간격 {SPACING_SEC}초")
+    print("모델 순서: " + " -> ".join(chain))
+    print()
     try:
         findings, stats = judge(clone_path, pairs, model)
     except CollectError as exc:
