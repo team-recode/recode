@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -221,6 +222,68 @@ def ask(client, model: str, prompt: str) -> tuple[str | None, str | None, int]:
             break
 
     return None, last_err, 0
+
+
+# 429 본문이 알려주는 무료 등급 하루 한도. 모델 하나당 이 수를 넘기면 그날은 끝이다.
+#   quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier, quotaValue: 20
+FREE_TIER_RPD = 20
+
+
+def _pacific_utc_offset(utc: datetime) -> int:
+    """태평양 시간의 UTC 오프셋(시간). 서머타임이면 -7, 아니면 -8.
+
+    zoneinfo 는 Windows 에서 tzdata 패키지를 따로 요구한다. 이 한 가지를 위해
+    의존성을 늘리지 않으려고 직접 계산한다. 미국 서머타임 규칙은 고정되어 있다:
+    3월 둘째 일요일 02:00 시작, 11월 첫째 일요일 02:00 종료.
+    """
+    def nth_sunday(month: int, nth: int) -> datetime:
+        first = datetime(utc.year, month, 1)
+        first += timedelta(days=(6 - first.weekday()) % 7)   # 그 달의 첫 일요일
+        return first + timedelta(weeks=nth - 1)
+
+    begin = nth_sunday(3, 2) + timedelta(hours=10)    # 02:00 PST = 10:00 UTC
+    end = nth_sunday(11, 1) + timedelta(hours=9)      # 02:00 PDT = 09:00 UTC
+    return -7 if begin <= utc < end else -8
+
+
+def quota_reset_at(now: datetime | None = None) -> datetime:
+    """하루 한도가 다시 열리는 시각을 이 PC 의 지역 시간으로 돌려준다.
+
+    무료 등급의 requests-per-day 는 태평양 시간 자정에 초기화된다.
+    https://ai.google.dev/gemini-api/docs/rate-limits
+    429 본문의 retryDelay(18초)는 짧은 재시도 힌트일 뿐 하루 한도와는 무관하다.
+    """
+    now = now or datetime.now(timezone.utc)
+    utc = now.astimezone(timezone.utc).replace(tzinfo=None)
+
+    offset = _pacific_utc_offset(utc)
+    pacific = utc + timedelta(hours=offset)
+    midnight = datetime(pacific.year, pacific.month, pacific.day) + timedelta(days=1)
+    # 자정 시점의 오프셋으로 다시 환산한다. 서머타임이 바뀌는 날 한 시간 어긋나는 것을 막는다.
+    reset_utc = midnight - timedelta(hours=_pacific_utc_offset(midnight - timedelta(hours=offset)))
+    return reset_utc.replace(tzinfo=timezone.utc).astimezone()
+
+
+def quota_notice(stopped: bool, skipped: int = 0, models: list[str] | None = None,
+                 now: datetime | None = None) -> dict | None:
+    """할당량 때문에 판정을 못 끝냈을 때 보고서와 화면이 함께 쓸 안내 값.
+
+    두 곳에서 따로 문구를 만들면 어긋난다. 여기 한 곳에서만 만든다.
+    남은 시간은 부를 때마다 다시 센다. 보고서를 나중에 다시 열어도 맞는 값이 나온다.
+    """
+    if not stopped:
+        return None
+
+    reset = quota_reset_at(now)
+    remaining = reset - (now or datetime.now(timezone.utc)).astimezone()
+    return {
+        "skipped": skipped,
+        "models": models or [],
+        "limit": FREE_TIER_RPD,
+        "reset_at": reset.strftime("%m월 %d일 %H:%M"),
+        # 30분 이상 남으면 올림한다. "0시간 뒤" 같은 문구가 나오지 않게 한다.
+        "hours": max(1, round(remaining.total_seconds() / 3600)),
+    }
 
 
 def model_chain(start: str) -> list[str]:

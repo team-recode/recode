@@ -95,7 +95,12 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
     notify("static_analysis", 88)
     step = total - 1
     started = _step(step, total, "정적 근거 수집 (High-Churn / Dead-Code / Test Gap)")
-    text = report_mod.build(clone_path, findings)
+    # 할당량으로 중간에 끊겼으면 보고서 맨 위에 그 사실을 적는다.
+    # 적지 않으면 finding 이 적은 것이 "확인할 게 없는 저장소"로 읽힌다.
+    quota = llm_mod.quota_notice(stats.get("quota_stopped", False),
+                                 stats.get("skipped_by_quota", 0),
+                                 stats.get("models_used"))
+    text = report_mod.build(clone_path, findings, quota)
     static_sec = round(time.time() - started, 1)
     _done(started)
 

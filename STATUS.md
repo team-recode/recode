@@ -924,6 +924,8 @@ PHASE 14 배포 완료 (9/17) 됐나?
 
 ## 다음 사람이 알아야 할 도구 특성
 
+- **Gemini 무료 등급 하루 한도는 태평양 시간 자정에 초기화된다.** 공식 문서 원문: *"Requests per day (RPD) quotas reset at midnight Pacific time"* (https://ai.google.dev/gemini-api/docs/rate-limits). 429 본문의 `retryDelay`(18초)는 짧은 재시도 힌트일 뿐 하루 한도와 무관하니 그 값을 보고 기다리면 안 된다. 한도는 `quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier`, `quotaValue: 20` 으로 응답에 직접 찍힌다. 계산은 `judge/llm.quota_reset_at()` 이 한다 — `zoneinfo` 는 Windows 에서 `tzdata` 를 따로 요구해서, 의존성을 늘리지 않으려고 미국 서머타임 규칙을 직접 넣었다
+- **보고서 본문(`judge/report.build`)에 cp949 밖 문자를 넣지 말 것.** `py -m judge.report` 가 본문을 그대로 stdout 으로 출력하는데 Windows 콘솔이 cp949 라 죽는다. 경고 기호 `⚠`(U+26A0)로 한 번 걸렸고 `[주의]` 로 바꿨다. 화면(HTML)은 UTF-8 이라 아이콘을 써도 무방하다
 - **vulture는 후보를 찾으면 exit 3을 낸다** (1이 아님). `ExitCode(NoDeadCode=0, InvalidInput=1, InvalidCmdlineArguments=2, DeadCode=3)`. exit 1은 문법 오류 파일만 건너뛰고 나머지 스캔은 계속되므로 실패로 처리하면 안 됨
 - **Windows 콘솔 인코딩**: Python이 stdout을 cp949로 씀. JSON을 파일로 리다이렉트하면 한글이 cp949로 저장됨. PowerShell 화면 출력은 정상
 - **`print` 로 나가는 문자열에 em-dash(`—`, U+2014)를 쓰지 말 것.** cp949 로 인코딩되지 않아 `UnicodeEncodeError` 로 죽는다. 세 번 겪었다(`judge/llm.py`, `scripts/run_validation.py`, `scripts/label_sheet.py`). 쉼표나 하이픈으로 대체할 것. 독스트링·주석·파일에 쓰는 문자열은 UTF-8 이라 무해하다

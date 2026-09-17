@@ -31,6 +31,33 @@
   </div>
 </section>
 
+{# 숫자 카드 바로 위에 둔다. 사람들이 오해하는 지점이 그 숫자라서, 보기 전에 읽혀야 한다. #}
+{% if quota %}
+<div class="rise mt-7 rounded-2xl px-5 py-4" style="animation-delay:.03s; background:#fffbeb; border:1px solid #fde68a">
+  <div class="flex items-start gap-3">
+    <svg class="mt-0.5 h-[18px] w-[18px] shrink-0" style="color:#b45309" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+      <path fill-rule="evenodd" d="M8.49 2.98c.64-1.14 2.38-1.14 3.02 0l6.28 11.15c.63 1.12-.16 2.52-1.51 2.52H3.72c-1.35 0-2.14-1.4-1.51-2.52L8.49 2.98ZM10 6a1 1 0 0 0-1 1v3.5a1 1 0 1 0 2 0V7a1 1 0 0 0-1-1Zm0 8.5a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Z" clip-rule="evenodd"/>
+    </svg>
+    <div class="min-w-0 text-[14px] leading-[1.85]" style="color:#78350f; word-break:keep-all">
+      <div class="font-semibold">분석이 끝까지 가지 못했습니다 &mdash; AI 하루 사용량을 다 썼습니다</div>
+      <p class="mt-1.5">
+        무료 등급은 모델 하나당 하루 {{ quota.limit }}회까지 쓸 수 있습니다.
+        모델 {{ quota.models | length }}개를 차례로 썼지만 모두 소진돼서,
+        <strong class="font-semibold">후보 {{ quota.skipped }}쌍은 확인하지 못했습니다.</strong>
+      </p>
+      <p class="mt-1.5">
+        아래 결과는 확인한 범위 안에서만 나온 것입니다.
+        질문이 적다고 해서 물어볼 게 없다는 뜻은 아닙니다.
+      </p>
+      <p class="mt-2.5 text-[13px]" style="color:#92400e">
+        사용량은 태평양 시간 자정에 초기화됩니다.
+        약 {{ quota.hours }}시간 뒤인 <strong class="font-semibold">{{ quota.reset_at }}</strong>부터 다시 분석할 수 있습니다.
+      </p>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {# 점수가 아니라 개수다. 23절: 코드 품질 점수를 전면에 두지 않는다. #}
 <div class="rise mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4" style="animation-delay:.05s">
   {% for label, value in [

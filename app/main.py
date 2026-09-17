@@ -210,9 +210,18 @@ def report_page(request: Request, job_id: str, session: Session = Depends(get_se
                 if findings_path.is_file() else [])
     data = report_mod.gather_evidence(clone_path, findings)
 
+    # 할당량으로 중간에 끊긴 분석이면 화면 맨 위에도 알린다. 남은 시간은 볼 때마다 다시 센다.
+    metrics_path = path.parent / "metrics.json"
+    metrics = (json.loads(metrics_path.read_text(encoding="utf-8"))
+               if metrics_path.is_file() else {})
+    quota = llm_mod.quota_notice(metrics.get("quota_stopped", False),
+                                 metrics.get("skipped_by_quota", 0),
+                                 metrics.get("models_used"))
+
     return templates.TemplateResponse(request, "report.html", {
         "d": data,
         "job_id": job_id,
+        "quota": quota,
         "markdown": path.read_text(encoding="utf-8"),
         # 상단에 이미 나온 파일은 아래 표에서 뺀다(19절 근거 중복 금지).
         "touched": [row["file"] for row in data["before_you_touch"]],

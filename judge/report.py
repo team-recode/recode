@@ -118,8 +118,33 @@ def gather_evidence(clone_path: Path, findings: list[dict]) -> dict:
     }
 
 
-def build(clone_path: Path, findings: list[dict]) -> str:
-    """HANDOFF.md 본문을 만든다."""
+def quota_lines(quota: dict) -> list[str]:
+    """AI 하루 사용량이 소진돼 판정을 못 끝냈을 때 맨 위에 붙일 안내.
+
+    이게 없으면 finding 이 적은 것이 "확인할 게 없는 저장소"로 읽힌다.
+    실제로는 못 본 후보가 남아 있다는 뜻이라, 둘을 구분해 줘야 한다.
+    """
+    models = ", ".join(f"`{m}`" for m in quota["models"]) or "사용 가능한 모델"
+    return [
+        # 경고 기호(U+26A0)를 쓰지 말 것. 이 본문은 `py -m judge.report` 가 stdout 으로
+        # 그대로 출력하는데, Windows 콘솔의 cp949 가 그 문자를 인코딩하지 못해 죽는다.
+        "> **[주의] 분석이 끝까지 가지 못했습니다 - AI 하루 사용량 소진**",
+        ">",
+        f"> 무료 등급은 모델 하나당 하루 {quota['limit']}회까지 호출할 수 있습니다. "
+        f"{models} 을(를) 차례로 썼지만 모두 소진됐습니다.",
+        f"> 후보 {quota['skipped']}쌍은 판정하지 못했습니다.",
+        ">",
+        "> **아래 질문은 확인한 범위 안에서만 나온 것입니다. "
+        "질문이 적다고 해서 확인할 것이 없다는 뜻은 아닙니다.**",
+        ">",
+        f"> 사용량은 태평양 시간 자정에 초기화됩니다. "
+        f"약 {quota['hours']}시간 뒤인 {quota['reset_at']}부터 다시 분석할 수 있습니다.",
+        "",
+    ]
+
+
+def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> str:
+    """HANDOFF.md 본문을 만든다. `quota` 는 `judge.llm.quota_notice()` 결과."""
     data = gather_evidence(clone_path, findings)
     overview = data["overview"]
     churn, dead, gaps = data["churn"], data["dead"], data["gaps"]
@@ -131,6 +156,10 @@ def build(clone_path: Path, findings: list[dict]) -> str:
             f"`{overview['head_sha']}` · 커밋 {overview['commit_count']}개", ""]
     out += ["이 문서는 코드를 설명하지 않는다. **수정 전에 확인해야 할 것**만 모았다.",
             "모든 항목에는 코드 근거가 붙어 있다. 근거가 없는 항목은 만들지 않았다.", ""]
+
+    # 맨 위에 둔다. 아래 결과를 읽기 전에 알아야 할 전제다.
+    if quota:
+        out += quota_lines(quota)
 
     out += ["## 1. Repository overview", "",
             f"- 저장소: `{overview['name']}`",
@@ -153,6 +182,10 @@ def build(clone_path: Path, findings: list[dict]) -> str:
     # 3. Questions — ①② finding
     if grouped:
         out += ["## 3. Questions for the previous developer", ""]
+        if quota:
+            # 목록 바로 위에서 한 번 더 짚는다. 위 안내를 지나친 채 개수만 보는 사람이 있다.
+            out += [f"*사용량 소진으로 후보 {quota['skipped']}쌍을 판정하지 못했다. "
+                    "아래는 확인한 범위의 결과다.*", ""]
         for i, f in enumerate(grouped[:MAX_QUESTIONS], 1):
             out += [f"{i}. {f['question']}",
                     f"   - 근거: {_evidence_line(f['evidence'])}",
