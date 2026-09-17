@@ -158,6 +158,23 @@ def iter_source_files(clone_path: Path, header_lang: Language | None = None):
         yield path, rel, lang
 
 
+def source_line_count(clone_path: Path) -> int:
+    """분석 대상 소스의 전체 줄 수.
+
+    "저장소에서 얼마나 나갔는가" 를 비율로 보여줄 때 분모로 쓴다.
+    문서·설정은 애초에 분석 대상이 아니므로 세지 않는다.
+    """
+    total = 0
+    for path, _, lang in iter_source_files(clone_path):
+        if not lang.analyzable:
+            continue
+        try:
+            total += path.read_text(encoding="utf-8", errors="replace").count("\n") + 1
+        except OSError:
+            continue
+    return total
+
+
 def composition(clone_path: Path) -> list[dict]:
     """저장소의 언어 구성. 파일 수 기준 내림차순.
 

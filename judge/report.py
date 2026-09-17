@@ -175,8 +175,29 @@ def quota_lines(quota: dict) -> list[str]:
     ]
 
 
-def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> str:
-    """HANDOFF.md 본문을 만든다. `quota` 는 `judge.llm.quota_notice()` 결과."""
+def privacy_lines(privacy: dict) -> list[str]:
+    """이번 분석에서 외부 모델이 본 코드가 얼마나 되는지.
+
+    "외부 API 를 쓴다" 는 사실만 알면 저장소 전체를 보냈다고 오해하기 쉽다.
+    함수 추출과 유사도 계산은 로컬에서 끝나고 좁혀진 후보만 나간다는 것을
+    실제 줄 수로 보여준다.
+    """
+    if not privacy or not privacy.get("total_lines"):
+        return []
+    return [
+        f"외부 모델로 보낸 코드는 후보 {privacy['pairs']}쌍 · {privacy['lines']:,}줄로, "
+        f"분석 대상 {privacy['total_lines']:,}줄의 {privacy['percent']}% 다.",
+        "함수 추출과 유사도 계산은 전부 로컬에서 했다(외부 전송 없음).",
+        "",
+    ]
+
+
+def build(clone_path: Path, findings: list[dict], quota: dict | None = None,
+          privacy: dict | None = None) -> str:
+    """HANDOFF.md 본문을 만든다.
+
+    `quota` 는 `judge.llm.quota_notice()`, `privacy` 는 `judge.llm.sent_code_summary()` 결과.
+    """
     data = gather_evidence(clone_path, findings)
     overview = data["overview"]
     churn, dead, gaps = data["churn"], data["dead"], data["gaps"]
@@ -206,6 +227,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None) -> 
             f"- 기준 커밋: `{overview['head_sha']}` (`{overview['branch']}`)",
             f"- 전체 커밋: {overview['commit_count']}개", ""]
     out += language_lines(data["languages"])
+    out += privacy_lines(privacy)
 
     # 2. Before you touch this repo — 가장 강한 조합만. 나머지 섹션과 중복시키지 않는다.
     if combined:

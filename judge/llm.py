@@ -267,6 +267,29 @@ def quota_reset_at(now: datetime | None = None) -> datetime:
     return reset_utc.replace(tzinfo=timezone.utc).astimezone()
 
 
+def sent_code_summary(clone_path, pairs: list[dict], judged: int) -> dict:
+    """이번 분석에서 외부 모델이 본 코드가 저장소의 어느 정도인지.
+
+    Re:Code 는 저장소 전체를 모델에 보내지 않는다. 함수 추출과 유사도 계산은
+    로컬에서 끝내고(judge/embed.py), 거기서 좁혀진 후보 쌍만 보낸다.
+    그 사실을 말로만 하지 않고 실제 줄 수로 보여주기 위한 값이다.
+    """
+    from judge import languages
+
+    lines = 0
+    for pair in pairs[:judged]:
+        for side in ("a", "b"):
+            lines += pair[side]["end_line"] - pair[side]["start_line"] + 1
+
+    total = languages.source_line_count(clone_path)
+    return {
+        "pairs": judged,
+        "lines": lines,
+        "total_lines": total,
+        "percent": round(lines * 100 / total, 2) if total else 0.0,
+    }
+
+
 def quota_notice(stopped: bool, skipped: int = 0, models: list[str] | None = None,
                  now: datetime | None = None) -> dict | None:
     """할당량 때문에 판정을 못 끝냈을 때 보고서와 화면이 함께 쓸 안내 값.

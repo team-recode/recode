@@ -100,7 +100,9 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
     quota = llm_mod.quota_notice(stats.get("quota_stopped", False),
                                  stats.get("skipped_by_quota", 0),
                                  stats.get("models_used"))
-    text = report_mod.build(clone_path, findings, quota)
+    # 저장소의 어느 정도가 외부 모델로 나갔는지. 말이 아니라 줄 수로 보여준다.
+    privacy = None if skip_llm else llm_mod.sent_code_summary(clone_path, pairs, judged)
+    text = report_mod.build(clone_path, findings, quota, privacy)
     static_sec = round(time.time() - started, 1)
     _done(started)
 
@@ -142,6 +144,8 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
         # 할당량 때문에 중간에 끊겼는지. 판정 수가 적은 이유를 나중에 설명할 수 있어야 한다.
         "quota_stopped": stats.get("quota_stopped", False),
         "skipped_by_quota": stats.get("skipped_by_quota", 0),
+        # 외부 모델이 실제로 본 코드량. 화면과 보고서가 같은 값을 쓴다.
+        "privacy": privacy,
         # useful / ambiguous / not_useful 은 사람이 라벨링한다(21절). 여기서 채우지 않는다.
         "human_labels": None,
     })

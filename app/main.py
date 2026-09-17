@@ -233,6 +233,8 @@ def report_page(request: Request, job_id: str, session: Session = Depends(get_se
         "d": data,
         "job_id": job_id,
         "quota": quota,
+        # 외부 모델이 실제로 본 코드량. 분석할 때 재서 metrics.json 에 넣어둔 값이다.
+        "privacy": metrics.get("privacy"),
         "markdown": path.read_text(encoding="utf-8"),
         # 상단에 이미 나온 파일은 아래 표에서 뺀다(19절 근거 중복 금지).
         "touched": [row["file"] for row in data["before_you_touch"]],

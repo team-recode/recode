@@ -95,6 +95,18 @@
     아래 <strong class="font-semibold">자주 바뀐 파일</strong>은 변경 이력 기반이라 언어를 가리지 않습니다.
   </p>
   {% endif %}
+
+  {# "외부 API 를 쓴다" 만 알면 저장소 전체를 보냈다고 오해한다. 실제 줄 수로 보여준다. #}
+  {% if privacy and privacy.total_lines %}
+  <p class="mt-2.5 border-t pt-2.5 text-[12px] leading-[1.75] body-t"
+     style="border-color:var(--line-soft); word-break:keep-all">
+    이번 분석에서 외부 모델로 보낸 코드는 후보 {{ privacy.pairs }}쌍 &middot;
+    <strong class="font-semibold ink">{{ "{:,}".format(privacy.lines) }}줄</strong>로,
+    분석 대상 {{ "{:,}".format(privacy.total_lines) }}줄의
+    <strong class="font-semibold ink">{{ privacy.percent }}%</strong>입니다.
+    함수 추출과 유사도 계산은 전부 이 서버 안에서 했습니다.
+  </p>
+  {% endif %}
 </div>
 {% endif %}
 {% endif %}
