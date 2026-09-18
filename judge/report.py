@@ -33,12 +33,30 @@ MAX_LIST_ROWS = 10          # 근거 목록이 길어져 개수가 부풀어 보
 
 
 def _overview(clone_path: Path) -> dict:
+    name = clone_path.name.replace("__", "/")
+    head = _git(["rev-parse", "--short", "HEAD"], cwd=clone_path)
     return {
-        "name": clone_path.name.replace("__", "/"),
+        "name": name,
         "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=clone_path),
-        "head_sha": _git(["rev-parse", "--short", "HEAD"], cwd=clone_path),
+        "head_sha": head,
         "commit_count": int(_git(["rev-list", "--count", "HEAD"], cwd=clone_path)),
+        # 근거를 GitHub 의 실제 코드로 연결하는 주소의 앞부분.
+        # 브랜치가 아니라 분석 시점 SHA 를 쓴다. 브랜치로 걸면 나중에 코드가 바뀌어
+        # 줄 번호가 밀리고 링크가 엉뚱한 곳을 가리킨다 - 근거가 근거가 아니게 된다.
+        "blob_base": f"https://github.com/{name}/blob/{head}",
     }
+
+
+def blob_url(overview: dict, file: str, line: int | None = None) -> str:
+    """파일(그리고 줄)을 가리키는 GitHub 주소. `#L12` 를 붙이면 그 줄이 강조된다."""
+    url = f"{overview['blob_base']}/{file}"
+    return f"{url}#L{line}" if line else url
+
+
+def _link(overview: dict, file: str, line: int | None = None) -> str:
+    """마크다운 링크. 라벨은 지금과 같은 `파일:줄` 모양을 유지한다."""
+    label = f"{file}:{line}" if line else file
+    return f"[`{label}`]({blob_url(overview, file, line)})"
 
 
 def group_findings(findings: list[dict]) -> list[dict]:
@@ -64,8 +82,10 @@ def group_findings(findings: list[dict]) -> list[dict]:
     return merged
 
 
-def _evidence_line(ev: list[dict]) -> str:
-    return ", ".join(f"`{e['file']}:{e['line']}`" for e in ev)
+def _evidence_line(ev: list[dict], overview: dict | None = None) -> str:
+    if overview is None:
+        return ", ".join(f"`{e['file']}:{e['line']}`" for e in ev)
+    return ", ".join(_link(overview, e["file"], e["line"]) for e in ev)
 
 
 def gather_evidence(clone_path: Path, findings: list[dict]) -> dict:
@@ -95,20 +115,22 @@ def gather_evidence(clone_path: Path, findings: list[dict]) -> dict:
         row["last_changed"] = churn_by_file[row["file"]]["last_changed"]
 
     grouped = group_findings(findings)
+    overview = _overview(clone_path)
 
     # 19절 First Week 우선순위: high-churn+test gap -> consistency -> dead-code. 최대 3개.
     week = []
     if combined:
-        week.append(f"`{combined[0]['file']}` 의 변경 이력을 읽고, "
+        week.append(f"{_link(overview, combined[0]['file'])} 의 변경 이력을 읽고, "
                     "연결된 테스트가 정말 없는지 확인한다 (최근 60일 최다 변경 + 테스트 근거 없음)")
     if grouped:
         week.append(f"이전 개발자에게 물어볼 것: {grouped[0]['question']}")
     if dead:
-        week.append(f"`{dead[0]['file']}:{dead[0]['line']}` 의 `{dead[0]['name']}` 이 "
+        week.append(f"{_link(overview, dead[0]['file'], dead[0]['line'])} 의 "
+                    f"`{dead[0]['name']}` 이 "
                     "실제로 쓰이지 않는지 확인한다 (정적 분석으로는 호출 근거를 찾지 못함)")
 
     return {
-        "overview": _overview(clone_path),
+        "overview": overview,
         # 결과가 얇을 때 "확인할 게 없어서"인지 "그 언어를 안 봐서"인지 구분해 준다.
         "languages": languages.composition(clone_path),
         "churn": churn,
@@ -233,7 +255,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None,
     if combined:
         out += [heading("Before you touch this repo"), ""]
         for i, row in enumerate(combined, 1):
-            out += [f"### {i}. `{row['file']}`", "",
+            out += [f"### {i}. {_link(overview, row['file'])}", "",
                     "Evidence:",
                     f"- 최근 60일간 {row['commits_60d']}회 변경 "
                     f"(마지막 {row['last_changed']})",
@@ -251,7 +273,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None,
                     "아래는 확인한 범위의 결과다.*", ""]
         for i, f in enumerate(grouped[:MAX_QUESTIONS], 1):
             out += [f"{i}. {f['question']}",
-                    f"   - 근거: {_evidence_line(f['evidence'])}",
+                    f"   - 근거: {_evidence_line(f['evidence'], overview)}",
                     f"   - 확인된 사실: {f['why_clarify']}"]
             if f["also_seen"]:
                 # 개수를 부풀리지 않되, 같은 패턴이 더 있다는 사실은 숨기지 않는다.
@@ -265,7 +287,7 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None,
         out += [heading("High-change areas"), "",
                 "최근 60일간 반복적으로 변경된 영역이다. 변경 횟수는 git 이력에서 센 수치다.", "",
                 "| 파일 | 60일 변경 | 마지막 변경 |", "|---|---|---|"]
-        out += [f"| `{r['file']}` | {r['commits_60d']} | {r['last_changed']} |"
+        out += [f"| {_link(overview, r['file'])} | {r['commits_60d']} | {r['last_changed']} |"
                 for r in rest_churn[:MAX_LIST_ROWS]]
         if len(rest_churn) > MAX_LIST_ROWS:
             out += [f"", f"그 외 {len(rest_churn) - MAX_LIST_ROWS}개 파일."]
@@ -277,7 +299,8 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None,
         out += [heading("Test evidence gaps"), "",
                 f"{rest_gaps[0]['message']} 테스트가 없다는 뜻은 아니다.", "",
                 "| 파일 | 전체 커밋 |", "|---|---|"]
-        out += [f"| `{r['file']}` | {r['commit_count']} |" for r in rest_gaps[:MAX_LIST_ROWS]]
+        out += [f"| {_link(overview, r['file'])} | {r['commit_count']} |"
+                for r in rest_gaps[:MAX_LIST_ROWS]]
         if len(rest_gaps) > MAX_LIST_ROWS:
             out += [f"", f"그 외 {len(rest_gaps) - MAX_LIST_ROWS}개 파일."]
         out += [""]
@@ -287,7 +310,8 @@ def build(clone_path: Path, findings: list[dict], quota: dict | None = None,
         out += [heading("Dead-code candidates"), "",
                 f"{dead[0]['message']} 삭제를 권하는 것이 아니라 확인이 필요한 후보다.", "",
                 "| 위치 | 이름 | 종류 | confidence |", "|---|---|---|---|"]
-        out += [f"| `{d['file']}:{d['line']}` | `{d['name']}` | {d['kind']} | {d['confidence']}% |"
+        out += [f"| {_link(overview, d['file'], d['line'])} | `{d['name']}` | "
+                f"{d['kind']} | {d['confidence']}% |"
                 for d in dead[:MAX_LIST_ROWS]]
         if len(dead) > MAX_LIST_ROWS:
             out += [f"", f"그 외 {len(dead) - MAX_LIST_ROWS}개 후보."]

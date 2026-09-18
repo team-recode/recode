@@ -148,9 +148,22 @@
 
         <div class="mt-5 flex flex-wrap items-center gap-2">
           <span class="kicker text-[12px] font-bold uppercase muted">근거</span>
+          {# 근거를 눌러 GitHub 의 실제 코드로 간다. 브랜치가 아니라 분석 시점 SHA 라서
+             나중에 코드가 바뀌어도 그때 그 줄을 정확히 가리킨다. #}
           {% for e in f.evidence %}
-          <span class="mono rounded-md px-2.5 py-1 text-[12.5px]"
-                style="background:var(--bg-top); border:1px solid var(--line); color:var(--body)">{{ e.file }}:{{ e.line }}</span>
+          <a href="{{ d.overview.blob_base }}/{{ e.file }}#L{{ e.line }}"
+             target="_blank" rel="noopener" title="GitHub 에서 이 줄 보기"
+             class="mono inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12.5px]
+                    transition hover:brightness-[.97]"
+             style="background:var(--bg-top); border:1px solid var(--line); color:var(--body)"
+             onmouseover="this.style.borderColor='var(--accent)'"
+             onmouseout="this.style.borderColor='var(--line)'">
+            {{ e.file }}:{{ e.line }}
+            <svg class="h-3 w-3 shrink-0 opacity-50" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M11 3a1 1 0 1 0 0 2h2.59l-6.3 6.29a1 1 0 1 0 1.42 1.42L15 6.41V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5Z"/>
+              <path d="M5 5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-3a1 1 0 1 0-2 0v3H5V7h3a1 1 0 0 0 0-2H5Z"/>
+            </svg>
+          </a>
           {% endfor %}
         </div>
 
@@ -169,7 +182,10 @@
   {% for row in d.before_you_touch %}
   <article class="mt-5 rounded-2xl p-6 shadow-[0_1px_10px_rgba(37,99,235,.06)]"
            style="background:var(--surface); border:1px solid var(--line-soft)">
-    <h3 class="mono text-[15px] font-semibold break-all">{{ row.file }}</h3>
+    <h3 class="mono text-[15px] font-semibold break-all">
+      <a href="{{ d.overview.blob_base }}/{{ row.file }}" target="_blank" rel="noopener" title="GitHub 에서 이 줄 보기"
+         class="hover:underline" style="color:inherit">{{ row.file }}</a>
+    </h3>
     <div class="mt-4 kicker text-[12px] font-bold uppercase muted">근거</div>
     <ul class="mt-2 space-y-1.5 text-[14px] leading-[1.8] body-t">
       <li>최근 60일간 <strong class="font-semibold ink">{{ row.commits_60d }}회</strong> 변경 (마지막 {{ row.last_changed }})</li>
@@ -245,7 +261,9 @@
       ["파일", "60일 변경", "마지막 변경"]) %}
   {% for r in churn_rest[:d.max_rows] %}
   <tr style="border-top:1px solid var(--line-soft)">
-    <td class="mono px-5 py-3 body-t break-all">{{ r.file }}</td>
+    <td class="mono px-5 py-3 body-t break-all">
+      <a href="{{ d.overview.blob_base }}/{{ r.file }}" target="_blank" rel="noopener" title="GitHub 에서 이 줄 보기" class="hover:underline" style="color:inherit">{{ r.file }}</a>
+    </td>
     <td class="mono px-5 py-3 font-semibold ink">{{ r.commits_60d }}</td>
     <td class="mono px-5 py-3 muted">{{ r.last_changed }}</td>
   </tr>
@@ -261,7 +279,9 @@
       ["파일", "전체 커밋"]) %}
   {% for r in gaps_rest[:d.max_rows] %}
   <tr style="border-top:1px solid var(--line-soft)">
-    <td class="mono px-5 py-3 body-t break-all">{{ r.file }}</td>
+    <td class="mono px-5 py-3 body-t break-all">
+      <a href="{{ d.overview.blob_base }}/{{ r.file }}" target="_blank" rel="noopener" title="GitHub 에서 이 줄 보기" class="hover:underline" style="color:inherit">{{ r.file }}</a>
+    </td>
     <td class="mono px-5 py-3 body-t">{{ r.commit_count }}</td>
   </tr>
   {% endfor %}
@@ -275,7 +295,9 @@
       ["위치", "이름", "종류", "confidence"]) %}
   {% for x in d.dead[:d.max_rows] %}
   <tr style="border-top:1px solid var(--line-soft)">
-    <td class="mono px-5 py-3 body-t break-all">{{ x.file }}:{{ x.line }}</td>
+    <td class="mono px-5 py-3 body-t break-all">
+      <a href="{{ d.overview.blob_base }}/{{ x.file }}#L{{ x.line }}" target="_blank" rel="noopener" title="GitHub 에서 이 줄 보기" class="hover:underline" style="color:inherit">{{ x.file }}:{{ x.line }}</a>
+    </td>
     <td class="mono px-5 py-3 font-medium ink">{{ x.name }}</td>
     <td class="px-5 py-3 body-t">{{ x.kind }}</td>
     <td class="mono px-5 py-3 muted">{{ x.confidence }}%</td>
