@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import DateTime, Integer, String, Text, create_engine
+from sqlalchemy import DateTime, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +49,9 @@ class Job(Base):
     # 보고서 본문이 아니라 경로만 둔다. HANDOFF.md 는 outputs/ 에 이미 저장된다.
     result_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 브라우저마다 쿠키로 발급하는 익명 UUID. 로그인이 아니라
+    # "같은 브라우저가 동시에 두 개 돌리지 않도록" 을 위한 식별자다.
+    session_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -71,7 +74,24 @@ def init_db() -> None:
     if engine is None:
         raise RuntimeError("DATABASE_URL 이 .env 에 없습니다.")
     Base.metadata.create_all(engine)
+    _add_missing_columns()
     _fail_orphaned_jobs()
+
+
+def _add_missing_columns() -> None:
+    """create_all 은 새 컬럼을 기존 테이블에 넣어주지 않는다.
+
+    Alembic 을 들이기엔 이르고, 한 컬럼짜리 상황이라 손으로 검사한다.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("jobs"):
+        return
+    existing = {col["name"] for col in inspector.get_columns("jobs")}
+    if "session_id" not in existing:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE jobs ADD COLUMN session_id VARCHAR(32)"))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_jobs_session_id ON jobs (session_id)"))
 
 
 def _fail_orphaned_jobs() -> None:

@@ -9,11 +9,12 @@
 import asyncio
 import json
 import sys
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import (BackgroundTasks, Depends, FastAPI, Form, HTTPException,
-                     Request)
+                     Request, Response)
 from fastapi.responses import (FileResponse, HTMLResponse, PlainTextResponse,
                                RedirectResponse)
 from fastapi.templating import Jinja2Templates
@@ -57,6 +58,11 @@ EXAMPLES = [
 
 # 웹에서 새 저장소를 분석할 때의 상한. 요청 간격이 7초라 이보다 크면 화면에서 너무 오래 기다린다.
 WEB_MAX_PAIRS = 20
+
+# 브라우저마다 익명 UUID 를 심는다. 로그인이 아니라 "같은 브라우저가 두 개 동시에
+# 돌리지 못하게" 만 하기 위한 식별자다. 30일이면 심사·데모 기간을 덮는다.
+SESSION_COOKIE = "recode_session"
+SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
 # 23절 Progress 화면 문구. db 상태값 순서와 1:1 로 맞춘다.
 STEP_LABELS = [
@@ -157,12 +163,17 @@ def submit(request: Request, tasks: BackgroundTasks, repo_url: str = Form(...),
             request, "landing.html",
             {"examples": EXAMPLES, "error": str(exc).splitlines()[0]}, status_code=400)
 
-    job_id = _create_job(session, tasks, repo_url.strip(), bool(skip_llm), WEB_MAX_PAIRS)
-    return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+    sid, is_new = _read_or_mint_session(request)
+    job_id, kind = _create_job(session, tasks, repo_url.strip(),
+                               bool(skip_llm), WEB_MAX_PAIRS, sid)
+    # "session" 일 때만 사용자에게 알린다. "url" 공유는 조용히 넘어간다.
+    target = f"/jobs/{job_id}" + ("?notice=already" if kind == "session" else "")
+    return _with_session_cookie(RedirectResponse(target, status_code=303), sid, is_new)
 
 
 @app.get("/examples/{slug}")
-def open_example(slug: str, tasks: BackgroundTasks, session: Session = Depends(get_session)):
+def open_example(slug: str, request: Request, tasks: BackgroundTasks,
+                 session: Session = Depends(get_session)):
     """미리 분석해 둔 예제 결과를 바로 연다.
 
     시연에서 10분씩 기다릴 수 없으므로 저장된 HANDOFF.md 를 그대로 쓴다.
@@ -172,27 +183,36 @@ def open_example(slug: str, tasks: BackgroundTasks, session: Session = Depends(g
     if example is None:
         raise HTTPException(status_code=404, detail="예제를 찾을 수 없습니다.")
 
+    sid, is_new = _read_or_mint_session(request)
+
     # 같은 결과를 가리키는 완료된 job 이 이미 있으면 그대로 재사용한다.
     done = (session.query(db.Job)
             .filter(db.Job.repo_url == example["url"], db.Job.status == db.STATUS_COMPLETED)
             .order_by(db.Job.created_at.desc()).first())
     if done and Path(done.result_path or "").is_file():
-        return RedirectResponse(f"/jobs/{done.id}/report", status_code=303)
+        return _with_session_cookie(
+            RedirectResponse(f"/jobs/{done.id}/report", status_code=303), sid, is_new)
 
     report = analyze.OUTPUT_ROOT / example["dir"] / "HANDOFF.md"
     if not report.is_file():
-        job_id = _create_job(session, tasks, example["url"], False, WEB_MAX_PAIRS)
-        return RedirectResponse(f"/jobs/{job_id}", status_code=303)
+        job_id, kind = _create_job(session, tasks, example["url"], False,
+                                   WEB_MAX_PAIRS, sid)
+        target = f"/jobs/{job_id}" + ("?notice=already" if kind == "session" else "")
+        return _with_session_cookie(
+            RedirectResponse(target, status_code=303), sid, is_new)
 
     job = db.Job(id=db.new_job_id(), repo_url=example["url"],
-                 status=db.STATUS_COMPLETED, progress=100, result_path=str(report))
+                 status=db.STATUS_COMPLETED, progress=100, result_path=str(report),
+                 session_id=sid)
     session.add(job)
     session.commit()
-    return RedirectResponse(f"/jobs/{job.id}/report", status_code=303)
+    return _with_session_cookie(
+        RedirectResponse(f"/jobs/{job.id}/report", status_code=303), sid, is_new)
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
-def progress_page(request: Request, job_id: str, session: Session = Depends(get_session)):
+def progress_page(request: Request, job_id: str, notice: str = "",
+                  session: Session = Depends(get_session)):
     job = _load(job_id, session)
     if job.status == db.STATUS_COMPLETED:
         return RedirectResponse(f"/jobs/{job_id}/report", status_code=303)
@@ -201,6 +221,8 @@ def progress_page(request: Request, job_id: str, session: Session = Depends(get_
         "job": job.as_status(),
         "steps": STEP_LABELS,
         "order": [key for key, _ in STEP_LABELS],
+        # "already" 하나만 처리한다. 다른 값은 조용히 무시한다.
+        "notice_already": notice == "already",
     })
 
 
@@ -251,20 +273,65 @@ def download(job_id: str, session: Session = Depends(get_session)):
 
 
 def _create_job(session: Session, tasks: BackgroundTasks, repo_url: str,
-                skip_llm: bool, limit: int) -> str:
-    """API 와 폼 제출이 같은 경로로 job 을 만든다."""
+                skip_llm: bool, limit: int, session_id: str) -> tuple[str, str]:
+    """API 와 폼 제출이 같은 경로로 job 을 만든다.
+
+    반환: (job_id, kind). kind 는 "new" | "session" | "url".
+    - "session": 이 브라우저가 이미 돌리고 있던 job 이 있어 새로 만들지 않았다.
+    - "url": 다른 브라우저가 같은 URL 을 이미 돌리는 중이라 그걸 공유한다.
+      무료 티어 quota 를 아끼기 위한 조용한 공유(안내 없음).
+    """
+    mine = (session.query(db.Job)
+            .filter(db.Job.session_id == session_id,
+                    db.Job.status.in_(db.RUNNING_STATUSES))
+            .order_by(db.Job.created_at.desc()).first())
+    if mine:
+        return mine.id, "session"
+
+    shared = (session.query(db.Job)
+              .filter(db.Job.repo_url == repo_url,
+                      db.Job.status.in_(db.RUNNING_STATUSES))
+              .order_by(db.Job.created_at.desc()).first())
+    if shared:
+        return shared.id, "url"
+
     job = db.Job(id=db.new_job_id(), repo_url=repo_url,
-                 status=db.STATUS_QUEUED, progress=0)
+                 status=db.STATUS_QUEUED, progress=0, session_id=session_id)
     session.add(job)
     session.commit()
     tasks.add_task(_run_job, job.id, repo_url, skip_llm, limit)
-    return job.id
+    return job.id, "new"
+
+
+def _read_or_mint_session(request: Request) -> tuple[str, bool]:
+    """쿠키에서 session_id 를 읽고, 없으면 새로 만든다.
+
+    반환: (session_id, is_new). is_new 가 True 면 응답에 쿠키를 심어야 한다.
+    """
+    existing = request.cookies.get(SESSION_COOKIE)
+    if existing:
+        return existing, False
+    return uuid.uuid4().hex, True
+
+
+def _with_session_cookie(response: Response, session_id: str, is_new: bool) -> Response:
+    if is_new:
+        response.set_cookie(SESSION_COOKIE, session_id,
+                            max_age=SESSION_COOKIE_MAX_AGE,
+                            httponly=True, samesite="lax")
+    return response
 
 
 @app.post("/api/analyze")
-def create_analysis(req: AnalyzeRequest, tasks: BackgroundTasks,
+def create_analysis(req: AnalyzeRequest, request: Request, response: Response,
+                    tasks: BackgroundTasks,
                     session: Session = Depends(get_session)) -> dict:
-    return {"job_id": _create_job(session, tasks, req.repo_url, req.skip_llm, req.limit)}
+    sid, is_new = _read_or_mint_session(request)
+    job_id, kind = _create_job(session, tasks, req.repo_url, req.skip_llm,
+                               req.limit, sid)
+    _with_session_cookie(response, sid, is_new)
+    # kind != "new" 면 새 job 이 아니라 이미 있던 걸 돌려준 것. 호출자가 알 수 있게 표시.
+    return {"job_id": job_id, "shared": kind != "new"}
 
 
 @app.get("/api/jobs/{job_id}/stream")
