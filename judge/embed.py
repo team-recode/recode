@@ -187,8 +187,16 @@ def similar_pairs(functions: list[dict], vectors: np.ndarray, threshold: float,
 
 
 def build(clone_path: Path, threshold: float = DEFAULT_THRESHOLD,
-          max_pairs: int = MAX_PAIRS) -> tuple[list[dict], list[dict], np.ndarray]:
-    """(후보 쌍, 필터 통과 함수, 벡터) 를 돌려준다."""
+          max_pairs: int = MAX_PAIRS,
+          on_extracted=None) -> tuple[list[dict], list[dict], np.ndarray]:
+    """(후보 쌍, 필터 통과 함수, 벡터) 를 돌려준다.
+
+    `on_extracted()` 는 함수 추출이 끝나고 임베딩을 시작하기 직전에 한 번 불린다.
+    이 함수가 추출과 임베딩을 연달아 하는데 부르는 쪽이 그걸 모르면,
+    화면에 "함수를 추출하는 중" 을 띄워 놓고 임베딩이 끝날 때까지 그대로 둔다.
+    실제로 오래 걸리는 쪽은 임베딩이라(첫 실행은 torch 로드에만 30초 넘게 쓴다)
+    사용자는 추출에서 멈춘 것처럼 본다.
+    """
     if not (clone_path / ".git").is_dir():
         raise CollectError(f"git 저장소가 아닙니다: {clone_path}")
 
@@ -201,6 +209,8 @@ def build(clone_path: Path, threshold: float = DEFAULT_THRESHOLD,
     if not kept:
         return [], [], np.zeros((0, 0), dtype=np.float32)
 
+    if on_extracted:
+        on_extracted()
     vectors = embed(kept, head_sha, clone_path.name)
     return similar_pairs(kept, vectors, threshold, max_pairs), kept, vectors
 

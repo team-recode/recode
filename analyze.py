@@ -60,7 +60,11 @@ def run(url: str, threshold: float, model: str, skip_llm: bool,
     # extract 는 embed 내부에서 호출된다. 함수 추출과 임베딩을 따로 돌리지 않는다.
     notify("extracting", 15)
     started = _step(2, total, f"함수 추출 및 유사 후보 축소 (threshold {threshold})")
-    pairs, kept, _ = embed_mod.build(clone_path, threshold=threshold)
+    # 추출이 끝나는 시점에 상태를 넘긴다. 이게 없으면 임베딩이 도는 내내 화면에
+    # "함수를 추출하는 중" 이 떠 있어서 멈춘 것처럼 보인다. 실제로 오래 걸리는 쪽은
+    # 임베딩이고, 서버를 막 띄운 뒤 첫 분석은 torch 로드에만 30초 넘게 쓴다.
+    pairs, kept, _ = embed_mod.build(clone_path, threshold=threshold,
+                                     on_extracted=lambda: notify("embedding", 25))
     embed_sec = round(time.time() - started, 1)
     notify("embedding", 35)
     (out_dir / "pairs.json").write_text(json.dumps(pairs, ensure_ascii=False, indent=2),
